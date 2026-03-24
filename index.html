@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obscurify - Image Obfuscator SaaS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-effects">
+        <div class="glow glow-1"></div>
+        <div class="glow glow-2"></div>
+        <div class="glow glow-3"></div>
+    </div>
+
+    <main class="app-container">
+        <header>
+            <h1>Obscurify</h1>
+            <p>Protection stéganographique et algorithmes mathématiques complets.</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-target="obfuscate-view">Offusquer</button>
+            <button class="tab-btn" data-target="revert-view">Restaurer</button>
+        </div>
+
+        <div class="view-content active" id="obfuscate-view">
+            <div class="drop-zone" id="obfuscate-drop">
+                <span class="drop-text">Glissez une image ici ou cliquez pour la sélectionner</span>
+                <input type="file" id="obfuscate-file" accept="image/png, image/jpeg, image/webp" hidden>
+                <img id="obfuscate-preview" class="preview-img hidden" alt="Aperçu">
+            </div>
+
+            <div class="controls panel">
+                <div class="control-group">
+                    <label>Force et Algorithme</label>
+                    <select id="algo-select">
+                        <optgroup label="100% Réversibles Mathématiquement (Bijections Sans Perte)">
+                            <option value="xor-shuffle">Chaos Absolu (XOR Cryptographique & Permutation)</option>
+                            <option value="logistic-xor">Bruit Non-Linéaire (Décalage Logistique & Hénon)</option>
+                            <option value="cat-map">Torsion Fractale (Algorithme du Chat d'Arnold)</option>
+                            <option value="baker-map">Pétrissage Infini (Carte de Baker / Riffle Shuffle)</option>
+                            <option value="affine-map">Translation Affine Modulo (Distorsion Géométrique)</option>
+                            <option value="wave-shift">Ondes Géométriques (Décalage Sinusoïdal)</option>
+                            <option value="prime-scatter">Dispersion Modulaire (Générateur Nombres Premiers)</option>
+                            <option value="rgb-shift">Aberration Chromatique Globale (Bruit RGB)</option>
+                        </optgroup>
+                        <optgroup label="Destructifs (Irréversibles sans l'original en métadonnée)">
+                            <option value="quantize-shuffle">Désintégration Pixélisée et Réduction Luma</option>
+                            <option value="color-crush">Réduction de Palette Extrême & Torsion</option>
+                            <option value="blur-noise">Flou Corruptif et Bruit Additif</option>
+                            <option value="salt-pepper">Bruit Poivre et Sel (Salt & Pepper Noise)</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <div class="control-group" style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                    <label style="color: var(--primary);">Stéganographie Lourde (Images Cachées - Optionnel)</label>
+                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.85rem; color: #fff; text-transform: none; letter-spacing: normal; font-weight: normal;">
+                        <input type="checkbox" id="embed-original" checked style="width: 16px; height: 16px;">
+                        Cacher l'image d'origine (Sécurité absolue de restauration, fichier + lourd)
+                    </label>
+                    
+                    <label style="display: block; font-size: 0.85rem; color: #fff; text-transform: none; letter-spacing: normal; font-weight: normal;">
+                        <strong>OU</strong> cacher une AUTRE image secrète :
+                        <div style="margin-top: 6px;">
+                            <input type="file" id="embed-other-file" accept="image/*" style="padding: 10px; font-size: 0.8rem;">
+                        </div>
+                    </label>
+                </div>
+
+                <div class="control-group inline-group" style="margin-top: 24px;">
+                    <label>Mot de passe (Décryptage et graine algorithmique)</label>
+                    <input type="password" id="obfuscate-pwd" placeholder="Laisser vide pour une image publique">
+                </div>
+
+                <div class="control-group inline-group" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 16px; border-radius: 12px;">
+                    <label style="color: var(--accent);">Signature Invisible (Stéganographie Légère)</label>
+                    <input type="text" id="obfuscate-sig" placeholder="Texte à cacher" style="margin-bottom: 12px;">
+                    
+                    <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; text-transform: none; letter-spacing: normal;">Emplacement de la cachette :</label>
+                    <select id="sig-location" style="font-size: 0.9rem; padding: 10px;">
+                        <option value="meta">Dans les métadonnées EOF (Rapide, laisse les pixels 100% intacts)</option>
+                        <option value="lsb">Dans les Pixels (Stéganographie LSB des bits invisibles, Ultra-discret)</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary w-full mt-4" id="btn-obfuscate">Offusquer & Télécharger (PNG)</button>
+            </div>
+        </div>
+
+        <div class="view-content" id="revert-view">
+            <div class="drop-zone" id="revert-drop">
+                <span class="drop-text">Glissez une image offusquée par Obscurify</span>
+                <input type="file" id="revert-file" accept="image/png" hidden>
+            </div>
+            
+            <div class="controls panel">
+                <div class="control-group inline-group">
+                    <label>Mot de passe</label>
+                    <input type="password" id="revert-pwd" placeholder="Requis si l'image est chiffrée">
+                </div>
+                <button class="btn btn-primary w-full mt-2" id="btn-revert">Restaurer</button>
+            </div>
+
+            <div id="revert-result" class="hidden panel mt-4" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2);">
+                <h3 style="margin-bottom: 12px; color: var(--accent);">Restauration Mathématique (Pixels) 🧪</h3>
+                <img id="revert-preview" class="preview-img mt-2">
+                <button class="btn btn-secondary w-full mt-4" id="btn-download-math">Télécharger (Pixels Restaurés)</button>
+            </div>
+
+            <div id="revert-hidden-container" class="hidden panel mt-4" style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2);">
+                <h3 style="margin-bottom: 12px; color: var(--primary);">Image Secrète Extraite (Stéganographie LFI) 🕵️</h3>
+                <img id="revert-hidden-preview" class="preview-img mt-2">
+                <button class="btn btn-primary w-full mt-4" id="btn-download-hidden">Télécharger l'Image Cachée</button>
+            </div>
+
+            <div id="revert-sig-container" class="hidden panel mt-4" style="background: rgba(0,0,0,0.3);">
+                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Signature Invisible Décodée :</label>
+                <code id="revert-sig-text" class="sig-box"></code>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
