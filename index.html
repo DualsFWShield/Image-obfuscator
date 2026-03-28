@@ -3,8 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Obscurify - Image Obfuscator SaaS</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <title>Obscurify - Image Obfuscator & File Sharing SaaS</title>
+    <meta name="description" content="Obscurify: Obfuscation d'images par algorithmes mathématiques réversibles, stéganographie et partage serverless.">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+    <script src="share/lib/jszip.min.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -16,113 +22,339 @@
 
     <main class="app-container">
         <header>
-            <h1>Obscurify</h1>
-            <p>Protection stéganographique et algorithmes mathématiques complets.</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div></div>
+                <h1>Obscurify</h1>
+                <button id="theme-toggle" class="btn-icon" title="Changer le thème">🌙</button>
+            </div>
+            <p>Obfuscation · Stéganographie · Partage Serverless</p>
         </header>
 
         <div class="tabs">
-            <button class="tab-btn active" data-target="obfuscate-view">Offusquer</button>
-            <button class="tab-btn" data-target="revert-view">Restaurer</button>
+            <button class="tab-btn active" data-target="obfuscate-view">🔒 Offusquer</button>
+            <button class="tab-btn" data-target="revert-view">🔓 Restaurer</button>
+            <button class="tab-btn" data-target="share-view">📡 Partager</button>
+            <button class="tab-btn" data-target="history-view">📜 Historique</button>
         </div>
 
+        <!-- ========== OBFUSCATE VIEW ========== -->
         <div class="view-content active" id="obfuscate-view">
             <div class="drop-zone" id="obfuscate-drop">
-                <span class="drop-text">Glissez une image ici ou cliquez pour la sélectionner</span>
-                <input type="file" id="obfuscate-file" accept="image/png, image/jpeg, image/webp" hidden>
-                <img id="obfuscate-preview" class="preview-img hidden" alt="Aperçu">
+                <span class="drop-text">Glissez une ou plusieurs images ici</span>
+                <input type="file" id="obfuscate-file" accept="image/png,image/jpeg,image/webp" hidden multiple>
+                <div id="zoom-viewport" class="zoom-viewport">
+                    <img id="obfuscate-preview" class="preview-img hidden" alt="Aperçu">
+                </div>
+            </div>
+
+            <!-- Batch indicator -->
+            <div id="batch-info" class="hidden panel mt-2" style="padding:10px 16px;">
+                <div style="text-align:center;margin-bottom:8px;"><span id="batch-count"></span> images sélectionnées — <strong>Mode Batch</strong> <small style="opacity:0.6;">(glissez pour réordonner)</small></div>
+                <div id="batch-thumbs" class="batch-thumbs"></div>
+            </div>
+
+            <!-- Comparison Slider -->
+            <div id="compare-container" class="hidden mt-4">
+                <div class="compare-slider" id="compare-slider">
+                    <canvas id="compare-canvas"></canvas>
+                    <div class="compare-handle" id="compare-handle">
+                        <div class="compare-line"></div>
+                        <div class="compare-circle">⟷</div>
+                    </div>
+                    <div class="compare-label compare-label-left">Original</div>
+                    <div class="compare-label compare-label-right">Obfusqué</div>
+                </div>
             </div>
 
             <div class="controls panel">
                 <div class="control-group">
-                    <label>Force et Algorithme</label>
+                    <label>Force et Algorithme <button class="help-btn" data-tooltip="Choisissez comment l'image sera transformée.&#10;&#10;• Réversibles : l'image peut être restaurée à 100% avec le bon mot de passe. Ce sont des bijections mathématiques (chaque pixel a une position unique).&#10;&#10;• Destructifs : des données sont perdues (quantification, flou...). La restauration des pixels est IMPOSSIBLE. Seul le payload stéganographique (image cachée) permet de récupérer l'original.">?</button></label>
                     <select id="algo-select">
-                        <optgroup label="100% Réversibles Mathématiquement (Bijections Sans Perte)">
-                            <option value="xor-shuffle">Chaos Absolu (XOR Cryptographique & Permutation)</option>
-                            <option value="logistic-xor">Bruit Non-Linéaire (Décalage Logistique & Hénon)</option>
-                            <option value="cat-map">Torsion Fractale (Algorithme du Chat d'Arnold)</option>
-                            <option value="baker-map">Pétrissage Infini (Carte de Baker / Riffle Shuffle)</option>
-                            <option value="affine-map">Translation Affine Modulo (Distorsion Géométrique)</option>
-                            <option value="wave-shift">Ondes Géométriques (Décalage Sinusoïdal)</option>
-                            <option value="prime-scatter">Dispersion Modulaire (Générateur Nombres Premiers)</option>
-                            <option value="rgb-shift">Aberration Chromatique Globale (Bruit RGB)</option>
+                        <optgroup label="✅ 100% Réversibles (Bijections Sans Perte)">
+                            <option value="xor-shuffle">Chaos Absolu (XOR & Permutation)</option>
+                            <option value="logistic-xor">Bruit Non-Linéaire (Logistique & Hénon)</option>
+                            <option value="cat-map">Torsion Fractale (Chat d'Arnold)</option>
+                            <option value="baker-map">Pétrissage Infini (Carte de Baker)</option>
+                            <option value="affine-map">Translation Affine Modulo</option>
+                            <option value="wave-shift">Ondes Géométriques (Sinusoïdal)</option>
+                            <option value="prime-scatter">Dispersion Modulaire (Premiers)</option>
+                            <option value="rgb-shift">Aberration Chromatique (RGB)</option>
+                            <option value="hilbert">Courbe de Hilbert (Space-Filling)</option>
+                            <option value="spiral">Scan Spiral (Centre→Bords)</option>
+                            <option value="zigzag">Zigzag Diagonal (Style JPEG)</option>
+                            <option value="chirikov">Carte de Chirikov (Standard Map)</option>
+                            <option value="henon">Attracteur de Hénon (Chaotique)</option>
+                            <option value="rubik">Rubik's Cube (RGB Planes)</option>
                         </optgroup>
-                        <optgroup label="Destructifs (Irréversibles sans l'original en métadonnée)">
-                            <option value="quantize-shuffle">Désintégration Pixélisée et Réduction Luma</option>
-                            <option value="color-crush">Réduction de Palette Extrême & Torsion</option>
-                            <option value="blur-noise">Flou Corruptif et Bruit Additif</option>
-                            <option value="salt-pepper">Bruit Poivre et Sel (Salt & Pepper Noise)</option>
+                        <optgroup label="⚠️ Destructifs (Perte de données irréversible)">
+                            <option value="quantize-shuffle">⚠️ Désintégration Pixélisée</option>
+                            <option value="color-crush">⚠️ Réduction de Palette Extrême</option>
+                            <option value="blur-noise">⚠️ Flou Corruptif & Bruit</option>
+                            <option value="salt-pepper">⚠️ Bruit Poivre et Sel</option>
                         </optgroup>
                     </select>
+                    <div id="algo-warning" class="hidden disclaimer disclaimer-warn mt-2">⚠️ Cet algorithme est <strong>destructif</strong>. Les pixels originaux sont perdus définitivement. Activez "Cacher l'image d'origine" ci-dessous pour pouvoir récupérer l'original.</div>
                 </div>
 
-                <div class="control-group" style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                    <label style="color: var(--primary);">Stéganographie Lourde (Images Cachées - Optionnel)</label>
-                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.85rem; color: #fff; text-transform: none; letter-spacing: normal; font-weight: normal;">
-                        <input type="checkbox" id="embed-original" checked style="width: 16px; height: 16px;">
-                        Cacher l'image d'origine (Sécurité absolue de restauration, fichier + lourd)
-                    </label>
-                    
-                    <label style="display: block; font-size: 0.85rem; color: #fff; text-transform: none; letter-spacing: normal; font-weight: normal;">
-                        <strong>OU</strong> cacher une AUTRE image secrète :
-                        <div style="margin-top: 6px;">
-                            <input type="file" id="embed-other-file" accept="image/*" style="padding: 10px; font-size: 0.8rem;">
+                <!-- Effect Gallery -->
+                <div class="control-group">
+                    <label>Aperçu des Effets <small style="opacity:0.6">(cliquez pour choisir)</small> <button class="help-btn" data-tooltip="Miniatures montrant l'effet de chaque algorithme sur votre image. Cliquez sur une miniature pour sélectionner cet algorithme.">?</button></label>
+                    <div id="effect-gallery" class="effect-gallery"></div>
+                </div>
+
+                <!-- Art Glitch Mode -->
+                <div class="control-group">
+                    <label>🎨 Mode Art Glitch — Intensité : <span id="glitch-value">100</span>% <button class="help-btn" data-tooltip="Contrôle le degré de mélange entre l'image originale et l'image obfusquée.&#10;&#10;• 100% = Obfuscation complète (réversible ✅)&#10;• &lt;100% = Effet artistique partiel (NON réversible ⚠️)&#10;&#10;En dessous de 100%, les pixels sont mélangés de façon irréversible. Utilisez ce mode uniquement pour créer des effets visuels artistiques, PAS pour sécuriser une image.">?</button></label>
+                    <input type="range" id="glitch-slider" min="5" max="100" value="100" step="5">
+                    <div class="slider-labels"><span>Subtil (art)</span><span>Total (sécurisé)</span></div>
+                    <div id="glitch-warning" class="hidden disclaimer disclaimer-warn mt-2">⚠️ <strong>Non réversible</strong> en dessous de 100%. L'image ne pourra pas être restaurée mathématiquement. Effet décoratif uniquement.</div>
+                </div>
+
+                <!-- Steganography -->
+                <div class="control-group" style="background:rgba(0,0,0,0.25);padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.05);">
+                    <label style="color:var(--primary);">Stéganographie Lourde (Optionnel) <button class="help-btn" data-tooltip="Cache une image ENTIÈRE à l'intérieur du fichier PNG produit (dans les métadonnées, compressée et chiffrée).&#10;&#10;• 'Cacher l'original' = Garantie de restauration même avec un algo destructif. Augmente la taille du fichier.&#10;&#10;• 'Cacher une AUTRE image' = Envoie secrètement une image différente, invisible pour quiconque n'a pas Obscurify + le mot de passe.">?</button></label>
+                    <label class="cb-label"><input type="checkbox" id="embed-original" checked> Cacher l'image d'origine</label>
+                    <label class="cb-label" style="margin-top:8px;"><strong>OU</strong> cacher une AUTRE image :<div style="margin-top:6px;"><input type="file" id="embed-other-file" accept="image/*"></div></label>
+                </div>
+
+                <!-- Password + Strength -->
+                <div class="control-group inline-group" style="margin-top:20px;">
+                    <label>Mot de passe <button class="help-btn" data-tooltip="Le mot de passe sert de graine pour l'algorithme ET de clé de chiffrement pour les données cachées (AES-256-GCM).&#10;&#10;• Vide = Image publique (n'importe qui avec Obscurify peut restaurer)&#10;• Rempli = Seules les personnes ayant le mot de passe peuvent restaurer&#10;&#10;Le mot de passe n'est JAMAIS stocké dans l'image.">?</button></label>
+                    <input type="password" id="obfuscate-pwd" placeholder="Laisser vide = image publique">
+                    <div id="pwd-strength" class="pwd-strength-bar"><div id="pwd-strength-fill" class="pwd-strength-fill"></div></div>
+                    <div id="pwd-strength-text" class="pwd-strength-text"></div>
+                </div>
+
+                <!-- Invisible Watermark -->
+                <div class="control-group">
+                    <label class="cb-label"><input type="checkbox" id="watermark-toggle"> 🔖 Watermark Invisible <button class="help-btn" data-tooltip="Inscrit un texte invisible dans l'image.&#10;&#10;• LSB (léger) : Rapide, dans les bits de poids faible. Fragile à la compression JPEG et aux captures d'écran.&#10;&#10;• DCT Robuste : Encoding dans le domaine fréquentiel (type SynthID). Résiste au JPEG Q70+, screenshots, crop 50%. Modifie légèrement les couleurs (imperceptible).">?</button></label>
+                    <div id="watermark-input" class="hidden" style="margin-top:10px;">
+                        <div class="wm-mode-selector" style="display:flex;gap:6px;margin-bottom:10px;">
+                            <label class="wm-radio" style="flex:1;">
+                                <input type="radio" name="wm-mode" value="lsb" checked>
+                                <div class="wm-radio-card">
+                                    <strong>LSB</strong><br><span style="font-size:0.7rem;color:var(--text-muted);">Léger · Fragile · 32 car.</span>
+                                </div>
+                            </label>
+                            <label class="wm-radio" style="flex:1;">
+                                <input type="radio" name="wm-mode" value="dct">
+                                <div class="wm-radio-card">
+                                    <strong>DCT Robuste</strong><br><span style="font-size:0.7rem;color:var(--text-muted);">SynthID · JPEG/Crop · 16 car.</span>
+                                </div>
+                            </label>
                         </div>
-                    </label>
+                        <input type="text" id="watermark-text" class="share-input" placeholder="Texte du watermark">
+                        <div id="wm-dct-notice" class="hidden disclaimer disclaimer-info mt-2" style="font-size:0.72rem;">🛡️ Mode DCT : Résiste à la compression JPEG, captures d'écran et crop jusqu'à 50%. Limité à 16 caractères.</div>
+                    </div>
                 </div>
 
-                <div class="control-group inline-group" style="margin-top: 24px;">
-                    <label>Mot de passe (Décryptage et graine algorithmique)</label>
-                    <input type="password" id="obfuscate-pwd" placeholder="Laisser vide pour une image publique">
+                <!-- Signature -->
+                <div class="control-group inline-group" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);padding:16px;border-radius:12px;">
+                    <label style="color:var(--accent);">Signature Invisible <button class="help-btn" data-tooltip="Cache un texte court (signature, copyright, message secret) dans l'image.&#10;&#10;• Métadonnées EOF : Ajouté après les données PNG. Rapide, ne touche pas les pixels. Détectable si on inspecte le fichier en hexadécimal.&#10;&#10;• Pixels (LSB) : Caché dans les bits de poids faible des pixels. Ultra-discret, invisible à l'œil nu et indétectable sans Obscurify. Limité en taille.">?</button></label>
+                    <input type="text" id="obfuscate-sig" placeholder="Texte à cacher" style="margin-bottom:12px;">
+                    <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;text-transform:none;letter-spacing:normal;">Emplacement :</label>
+                    <select id="sig-location"><option value="meta">Métadonnées EOF (rapide, hors pixels)</option><option value="lsb">Pixels LSB (ultra-discret)</option></select>
                 </div>
 
-                <div class="control-group inline-group" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 16px; border-radius: 12px;">
-                    <label style="color: var(--accent);">Signature Invisible (Stéganographie Légère)</label>
-                    <input type="text" id="obfuscate-sig" placeholder="Texte à cacher" style="margin-bottom: 12px;">
-                    
-                    <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; text-transform: none; letter-spacing: normal;">Emplacement de la cachette :</label>
-                    <select id="sig-location" style="font-size: 0.9rem; padding: 10px;">
-                        <option value="meta">Dans les métadonnées EOF (Rapide, laisse les pixels 100% intacts)</option>
-                        <option value="lsb">Dans les Pixels (Stéganographie LSB des bits invisibles, Ultra-discret)</option>
+                <!-- Security Score -->
+                <div class="security-score-container mt-4">
+                    <label style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);margin-bottom:8px;display:block;">Score de Sécurité <button class="help-btn" data-tooltip="Estimation du niveau de protection de votre configuration.&#10;&#10;Augmente avec : algo réversible, mot de passe fort, payload caché, signature, watermark, intensité 100%.&#10;&#10;Ce score est indicatif et ne constitue pas une garantie de sécurité cryptographique.">?</button></label>
+                    <div class="security-gauge">
+                        <svg viewBox="0 0 120 60" class="gauge-svg">
+                            <path d="M10 55 A50 50 0 0 1 110 55" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8" stroke-linecap="round"/>
+                            <path id="gauge-arc" d="M10 55 A50 50 0 0 1 110 55" fill="none" stroke="var(--primary)" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 157"/>
+                        </svg>
+                        <div class="gauge-value" id="gauge-value">0</div>
+                        <div class="gauge-label" id="gauge-label">—</div>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:20px;align-items:stretch;">
+                    <button class="btn btn-primary" style="flex:1;" id="btn-obfuscate">Offusquer & Télécharger</button>
+                    <select id="export-format" style="width:90px;border-radius:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--text);padding:0 10px;font-size:0.78rem;cursor:pointer;" title="Format d'export">
+                        <option value="image/png">PNG</option>
+                        <option value="image/webp">WEBP</option>
+                        <option value="image/avif">AVIF</option>
+                        <option value="image/jpeg">JPEG</option>
                     </select>
+                    <button class="btn btn-secondary" id="btn-export-gif" title="Exporter GIF animé" style="padding:14px 16px;">GIF</button>
                 </div>
 
-                <button class="btn btn-primary w-full mt-4" id="btn-obfuscate">Offusquer & Télécharger (PNG)</button>
+                <!-- Integrity Hash -->
+                <div id="integrity-hash" class="hidden mt-2" style="font-size:0.75rem;color:var(--text-muted);word-break:break-all;background:rgba(0,0,0,0.3);padding:10px;border-radius:8px;">
+                    <strong>SHA-256 <button class="help-btn" data-tooltip="Empreinte cryptographique unique du fichier produit. Si un seul bit change, le hash sera complètement différent.&#10;&#10;Partagez ce hash avec le destinataire pour qu'il puisse vérifier que le fichier n'a pas été altéré en transit.">?</button> :</strong> <code id="hash-value"></code>
+                </div>
+
+                <!-- Batch Progress -->
+                <div id="batch-progress" class="hidden mt-4">
+                    <div class="share-progress-bar"><div class="share-progress-fill" id="batch-progress-fill"></div></div>
+                    <p id="batch-progress-text" style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;"></p>
+                </div>
             </div>
         </div>
 
+        <!-- ========== REVERT VIEW ========== -->
         <div class="view-content" id="revert-view">
             <div class="drop-zone" id="revert-drop">
                 <span class="drop-text">Glissez une image offusquée par Obscurify</span>
                 <input type="file" id="revert-file" accept="image/png" hidden>
             </div>
-            
             <div class="controls panel">
                 <div class="control-group inline-group">
                     <label>Mot de passe</label>
-                    <input type="password" id="revert-pwd" placeholder="Requis si l'image est chiffrée">
+                    <input type="password" id="revert-pwd" placeholder="Requis si chiffrée">
                 </div>
                 <button class="btn btn-primary w-full mt-2" id="btn-revert">Restaurer</button>
             </div>
-
-            <div id="revert-result" class="hidden panel mt-4" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2);">
-                <h3 style="margin-bottom: 12px; color: var(--accent);">Restauration Mathématique (Pixels) 🧪</h3>
+            <div id="revert-result" class="hidden panel mt-4" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);">
+                <h3 style="margin-bottom:12px;color:var(--accent);">Restauration Mathématique 🧪</h3>
                 <img id="revert-preview" class="preview-img mt-2">
-                <button class="btn btn-secondary w-full mt-4" id="btn-download-math">Télécharger (Pixels Restaurés)</button>
+                <button class="btn btn-secondary w-full mt-4" id="btn-download-math">Télécharger</button>
             </div>
-
-            <div id="revert-hidden-container" class="hidden panel mt-4" style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2);">
-                <h3 style="margin-bottom: 12px; color: var(--primary);">Image Secrète Extraite (Stéganographie LFI) 🕵️</h3>
+            <div id="revert-hidden-container" class="hidden panel mt-4" style="background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.2);">
+                <h3 style="margin-bottom:12px;color:var(--primary);">Image Secrète Extraite 🕵️</h3>
                 <img id="revert-hidden-preview" class="preview-img mt-2">
-                <button class="btn btn-primary w-full mt-4" id="btn-download-hidden">Télécharger l'Image Cachée</button>
+                <button class="btn btn-primary w-full mt-4" id="btn-download-hidden">Télécharger</button>
             </div>
-
-            <div id="revert-sig-container" class="hidden panel mt-4" style="background: rgba(0,0,0,0.3);">
-                <label style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Signature Invisible Décodée :</label>
+            <div id="revert-sig-container" class="hidden panel mt-4" style="background:rgba(0,0,0,0.3);">
+                <label style="display:block;font-size:0.85rem;color:var(--text-muted);margin-bottom:6px;">Signature Décodée :</label>
                 <code id="revert-sig-text" class="sig-box"></code>
             </div>
+            <div id="revert-watermark-container" class="hidden panel mt-4" style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.2);">
+                <label style="display:block;font-size:0.85rem;color:var(--text-muted);margin-bottom:6px;">🔖 Watermark Détecté :</label>
+                <code id="revert-watermark-text" class="sig-box" style="color:var(--primary);"></code>
+            </div>
+        </div>
+
+        <!-- ========== SHARE VIEW ========== -->
+        <div class="view-content" id="share-view">
+            <section id="share-sender" class="share-section active">
+                <div class="drop-zone" id="share-drop-zone">
+                    <div class="icon-wrapper"><svg width="48" height="48" viewBox="0 0 24 24" fill="none"><path d="M7 10V9C7 6.24 9.24 4 12 4s5 2.24 5 5v1c2.21 0 4 1.79 4 4 0 1.48-.8 2.81-2 3.5M7 10c-2.21 0-4 1.79-4 4 0 1.48.8 2.81 2 3.5M7 10c.33 0 .65.04.96.12M12 12v8m0-8l-3 3m3-3l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <h3 style="margin-bottom:4px;">Déposez vos fichiers ici</h3>
+                    <p style="color:var(--text-muted);font-size:0.85rem;">ou cliquez pour parcourir</p>
+                    <input type="file" id="share-file-input" multiple hidden>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;">
+                    <button id="open-audio-btn" class="btn btn-secondary" style="width:auto;padding:8px 16px;font-size:0.85rem;">📡 Audio Receiver</button>
+                </div>
+                <div class="hidden" id="share-options-panel">
+                    <div class="share-file-info panel mt-4" style="display:flex;justify-content:space-between;padding:12px 16px;">
+                        <span id="share-filename" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">file.png</span>
+                        <span id="share-filesize" style="color:var(--text-muted);">0 KB</span>
+                    </div>
+                    <div class="panel mt-4">
+                        <div class="share-toggle-row"><label class="toggle-switch"><input type="checkbox" id="share-lossy-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>Compression Lossy (Images)</span></label></div>
+                        <div class="share-toggle-row"><label class="toggle-switch"><input type="checkbox" id="share-encrypt-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>Chiffrer avec mot de passe</span></label></div>
+                        <div id="share-pwd-container" class="hidden" style="margin-bottom:16px;"><input type="password" id="share-sender-pwd" class="share-input" placeholder="Mot de passe"></div>
+                        <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;margin-top:8px;">
+                            <label class="toggle-switch"><input type="checkbox" id="share-beam-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>📡 Infinity Beam (P2P)</span></label>
+                            <div id="share-beam-info" class="hidden" style="background:rgba(0,242,255,0.08);padding:10px;border-radius:8px;font-size:0.8rem;color:#ccffff;margin-bottom:12px;"><strong>⚡ Transfert Device-to-Device</strong><br>Taille illimitée. <span style="color:#ff9999;">⚠️ Ne fermez pas cet onglet!</span></div>
+                        </div>
+                        <div class="advanced-toggle" id="share-advanced-toggle"><span>Options Avancées</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+                        <div id="share-advanced-panel" class="hidden" style="background:rgba(0,0,0,0.2);padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);margin-bottom:14px;">
+                            <div class="setting-row"><label>💣 Time Bomb</label><select id="share-timebomb"><option value="0">Désactivé</option><option value="5">5 min</option><option value="60">1h</option><option value="1440">24h</option></select></div>
+                            <div class="setting-row"><label>🎨 Vibe Share</label><select id="share-vibe"><option value="default">Défaut</option><option value="cyberpunk">Cyberpunk</option><option value="sunset">Sunset</option><option value="matrix">Matrix</option><option value="zen">Zen</option></select></div>
+                            <div class="setting-row"><label class="toggle-switch" style="margin-bottom:0;"><input type="checkbox" id="share-geo-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>📍 Geo-Lock</span></label></div>
+                            <div class="setting-row" style="margin-top:12px;"><button id="share-audio-tx-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🎼 Audio Key (Tx)</button></div>
+                            <div class="setting-row" style="margin-top:8px;"><button id="share-camo-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🥸 Camouflage</button></div>
+                        </div>
+                        <button id="share-generate-btn" class="btn btn-primary w-full">Générer le Lien</button>
+                    </div>
+                    <div id="share-result-panel" class="hidden panel mt-4">
+                        <div style="display:flex;gap:6px;margin-bottom:8px;">
+                            <input type="text" id="share-url" readonly class="share-input" style="flex:1;font-family:monospace;font-size:0.8rem;">
+                            <button id="share-copy-btn" class="btn btn-secondary" style="padding:10px;">📋</button>
+                            <button id="share-qr-btn" class="btn btn-secondary" style="padding:10px;">📱</button>
+                            <a id="share-preview-link" href="#" target="_blank" class="btn btn-secondary" style="padding:10px;text-decoration:none;">🔗</a>
+                        </div>
+                        <div id="share-qr-container" class="hidden" style="display:flex;justify-content:center;padding:12px;background:white;border-radius:10px;margin-top:10px;"><div id="share-qrcode"></div></div>
+                        <p class="share-status-msg" id="share-status-msg">Lien généré !</p>
+                    </div>
+                    <!-- Transfer Stats -->
+                    <div id="share-stats" class="hidden panel mt-2" style="font-size:0.8rem;color:var(--text-muted);display:flex;gap:16px;justify-content:center;padding:10px;">
+                        <span>⏱ <span id="stat-elapsed">0s</span></span>
+                        <span>🚀 <span id="stat-speed">0 KB/s</span></span>
+                        <span>📦 <span id="stat-sent">0 B</span></span>
+                    </div>
+                    <div id="share-progress-container" class="hidden" style="margin-top:16px;">
+                        <div class="share-progress-bar"><div class="share-progress-fill" id="share-progress-fill"></div></div>
+                        <p id="share-progress-text" style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">Traitement...</p>
+                    </div>
+                </div>
+            </section>
+            <!-- Receiver -->
+            <section id="share-receiver" class="share-section">
+                <div class="panel" style="text-align:center;padding:30px;">
+                    <div class="icon-wrapper" style="margin-bottom:16px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+                    <h2 style="margin-bottom:8px;">Fichier Reçu</h2>
+                    <p id="share-recv-filename" style="font-weight:600;margin-bottom:4px;">Chargement...</p>
+                    <p id="share-recv-filesize" style="color:var(--text-muted);font-size:0.85rem;">...</p>
+                    <!-- File Preview -->
+                    <div id="share-file-preview" class="hidden mt-4" style="max-height:200px;overflow:auto;border-radius:10px;border:1px solid rgba(255,255,255,0.1);"></div>
+                    <div id="share-decrypt-panel" class="hidden" style="margin-top:16px;"><input type="password" id="share-decrypt-pwd" class="share-input" placeholder="Mot de passe"><button id="share-decrypt-btn" class="btn btn-primary w-full mt-2">Déverrouiller</button></div>
+                    <button id="share-download-btn" class="btn btn-primary w-full mt-4" disabled>Télécharger</button>
+                    <!-- Mini Chat -->
+                    <div id="share-chat" class="hidden mt-4" style="text-align:left;">
+                        <div id="chat-messages" style="background:rgba(0,0,0,0.3);border-radius:10px;padding:10px;height:120px;overflow-y:auto;font-size:0.8rem;margin-bottom:8px;"></div>
+                        <div style="display:flex;gap:6px;"><input type="text" id="chat-input" class="share-input" placeholder="Message..." style="flex:1;padding:8px 12px;"><button id="chat-send" class="btn btn-primary" style="padding:8px 16px;">↑</button></div>
+                    </div>
+                    <div id="share-recv-progress" class="hidden" style="margin-top:16px;">
+                        <div class="share-progress-bar"><div class="share-progress-fill" id="share-recv-progress-fill"></div></div>
+                        <p id="share-recv-progress-text" style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">En attente...</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ========== HISTORY VIEW ========== -->
+        <div class="view-content" id="history-view">
+            <div id="history-empty" class="panel" style="text-align:center;padding:40px;color:var(--text-muted);">
+                <p style="font-size:1.2rem;margin-bottom:8px;">📜</p>
+                <p>Aucun historique pour le moment.</p>
+                <p style="font-size:0.8rem;margin-top:6px;">Vos obfuscations apparaîtront ici automatiquement.</p>
+            </div>
+            <div id="history-list" class="history-list"></div>
+            <button id="history-clear" class="btn btn-secondary w-full mt-4 hidden">Effacer l'historique</button>
+        </div>
+
+        <!-- Audio Modal -->
+        <div id="audio-modal" class="hidden overlay">
+            <div class="modal-content panel">
+                <button id="close-audio-btn" class="close-btn">&times;</button>
+                <h2 style="margin-bottom:12px;">Audio Receiver</h2>
+                <canvas id="audio-visualizer" width="400" height="120" style="width:100%;height:120px;background:#000;border-radius:10px;border:1px solid rgba(255,255,255,0.1);margin-bottom:12px;"></canvas>
+                <div id="stream-output" style="background:#0a0a0a;font-family:monospace;color:var(--primary);padding:10px;height:80px;overflow-y:auto;text-align:left;border-radius:10px;margin-bottom:12px;word-break:break-all;font-size:0.75rem;width:100%;"></div>
+                <div style="display:flex;gap:8px;"><button id="start-listen-btn" class="btn btn-primary" style="flex:1;">Écouter</button><button id="stop-listen-btn" class="btn btn-secondary hidden" style="flex:1;">Stop</button></div>
+            </div>
+        </div>
+
+        <!-- Camo Layer -->
+        <div id="camouflage-layer" class="hidden">
+            <div class="spreadsheet-header"><div class="sheet-title">Q4 Financial Overview_2025.xlsx - Excel</div><div class="window-controls"><span>_</span><span>□</span><span class="close-x">×</span></div></div>
+            <div class="spreadsheet-toolbar"><span>File</span><span>Home</span><span>Insert</span><span>Page Layout</span><span>Formulas</span><span>Data</span><span>Review</span><span>View</span></div>
+            <div class="spreadsheet-formula-bar"><span class="fx">fx</span><input type="text" value="=SUM(D2:D14)" readonly></div>
+            <div class="spreadsheet-content"><table><thead><tr><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr></thead><tbody>
+                <tr><th>1</th><td>Category</td><td>Item</td><td>Unit Cost</td><td>Total</td><td>Notes</td></tr>
+                <tr><th>2</th><td>Operating</td><td>Server Maint.</td><td>450.00</td><td>450.00</td><td>Monthly</td></tr>
+                <tr><th>3</th><td>Marketing</td><td>Q3 Campaign</td><td>1200.00</td><td>1200.00</td><td>Completed</td></tr>
+                <tr><th>4</th><td>Personnel</td><td>Consulting</td><td>800.00</td><td>1600.00</td><td>Contract</td></tr>
+                <tr><th>5</th><td>Software</td><td>Licenses</td><td>299.00</td><td>299.00</td><td>Annual</td></tr>
+                <tr><th>6</th><td>Logistics</td><td>Shipping</td><td>150.00</td><td>450.00</td><td>Domestic</td></tr>
+                <tr><th>7</th><td></td><td></td><td></td><td></td><td></td></tr>
+                <tr><th>8</th><td><b>Total</b></td><td></td><td></td><td id="camo-exit-trigger" title="Double Click"><b>4119.00</b></td><td></td></tr>
+            </tbody></table></div>
+            <div class="spreadsheet-footer"><span class="tab active">Sheet1</span><span class="tab">Sheet2</span><span class="tab">Sheet3</span></div>
         </div>
     </main>
 
+    <div id="toast-container"></div>
+
+    <script src="share/lib/peerjs.min.js"></script>
+    <script src="share/p2p.js"></script>
+    <script src="share/audio.js"></script>
+    <script src="share/features.js"></script>
     <script src="app.js"></script>
+    <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
 </body>
 </html>
