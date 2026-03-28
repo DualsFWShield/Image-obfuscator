@@ -70,8 +70,11 @@
                 <div class="control-group">
                     <label>Force et Algorithme <button class="help-btn" data-tooltip="Choisissez comment l'image sera transformée.&#10;&#10;• Réversibles : l'image peut être restaurée à 100% avec le bon mot de passe. Ce sont des bijections mathématiques (chaque pixel a une position unique).&#10;&#10;• Destructifs : des données sont perdues (quantification, flou...). La restauration des pixels est IMPOSSIBLE. Seul le payload stéganographique (image cachée) permet de récupérer l'original.">?</button></label>
                     <select id="algo-select">
+                        <optgroup label="🔒 Stéganographie Pure (Aucune Obfuscation)">
+                            <option value="none">Aucun (cacher un fichier uniquement)</option>
+                        </optgroup>
                         <optgroup label="✅ 100% Réversibles (Bijections Sans Perte)">
-                            <option value="xor-shuffle">Chaos Absolu (XOR & Permutation)</option>
+                            <option value="xor-shuffle" selected>Chaos Absolu (XOR & Permutation)</option>
                             <option value="logistic-xor">Bruit Non-Linéaire (Logistique & Hénon)</option>
                             <option value="cat-map">Torsion Fractale (Chat d'Arnold)</option>
                             <option value="baker-map">Pétrissage Infini (Carte de Baker)</option>
@@ -94,6 +97,7 @@
                         </optgroup>
                     </select>
                     <div id="algo-warning" class="hidden disclaimer disclaimer-warn mt-2">⚠️ Cet algorithme est <strong>destructif</strong>. Les pixels originaux sont perdus définitivement. Activez "Cacher l'image d'origine" ci-dessous pour pouvoir récupérer l'original.</div>
+                    <div id="algo-none-notice" class="hidden disclaimer mt-2" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:var(--primary);">🔒 <strong>Mode Stéganographie Pure</strong> — L'image ne sera pas altérée visuellement. Utilisez la section ci-dessous pour cacher un fichier (image, PDF, DOCX, ZIP...) à l'intérieur.</div>
                 </div>
 
                 <!-- Effect Gallery -->
@@ -112,9 +116,9 @@
 
                 <!-- Steganography -->
                 <div class="control-group" style="background:rgba(0,0,0,0.25);padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.05);">
-                    <label style="color:var(--primary);">Stéganographie Lourde (Optionnel) <button class="help-btn" data-tooltip="Cache une image ENTIÈRE à l'intérieur du fichier PNG produit (dans les métadonnées, compressée et chiffrée).&#10;&#10;• 'Cacher l'original' = Garantie de restauration même avec un algo destructif. Augmente la taille du fichier.&#10;&#10;• 'Cacher une AUTRE image' = Envoie secrètement une image différente, invisible pour quiconque n'a pas Obscurify + le mot de passe.">?</button></label>
+                    <label style="color:var(--primary);">Stéganographie Lourde (Optionnel) <button class="help-btn" data-tooltip="Cache un FICHIER entier à l'intérieur du PNG produit (dans les métadonnées, compressé et chiffré).&#10;&#10;• Supporte : images, PDF, DOCX, XLSX, PPTX, ZIP, etc.&#10;• Taille max recommandée : ~50 Mo.&#10;&#10;Avec algo 'Aucun', l'image reste visuellement identique mais contient secrètement votre fichier.">?</button></label>
                     <label class="cb-label"><input type="checkbox" id="embed-original" checked> Cacher l'image d'origine</label>
-                    <label class="cb-label" style="margin-top:8px;"><strong>OU</strong> cacher une AUTRE image :<div style="margin-top:6px;"><input type="file" id="embed-other-file" accept="image/*"></div></label>
+                    <label class="cb-label" style="margin-top:8px;"><strong>OU</strong> cacher un fichier :<div style="margin-top:6px;"><input type="file" id="embed-other-file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.txt,.csv,.json,.mp3,.mp4,.mov,application/*"></div></label>
                 </div>
 
                 <!-- Password + Strength -->
@@ -197,7 +201,7 @@
         <div class="view-content" id="revert-view">
             <div class="drop-zone" id="revert-drop">
                 <span class="drop-text">Glissez une image offusquée par Obscurify</span>
-                <input type="file" id="revert-file" accept="image/png" hidden>
+                <input type="file" id="revert-file" accept="image/png,image/webp,image/jpeg,image/avif" hidden>
             </div>
             <div class="controls panel">
                 <div class="control-group inline-group">
@@ -212,7 +216,7 @@
                 <button class="btn btn-secondary w-full mt-4" id="btn-download-math">Télécharger</button>
             </div>
             <div id="revert-hidden-container" class="hidden panel mt-4" style="background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.2);">
-                <h3 style="margin-bottom:12px;color:var(--primary);">Image Secrète Extraite 🕵️</h3>
+                <h3 style="margin-bottom:12px;color:var(--primary);">Fichier Secret Extrait 🕵️</h3>
                 <img id="revert-hidden-preview" class="preview-img mt-2">
                 <button class="btn btn-primary w-full mt-4" id="btn-download-hidden">Télécharger</button>
             </div>

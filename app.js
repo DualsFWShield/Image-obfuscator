@@ -767,6 +767,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (algo === 'color-crush') applyColorCrush(imgData, width, height, prng, reverse);
         else if (algo === 'blur-noise') applyBlurNoise(imgData, width, height, prng, reverse);
         else if (algo === 'salt-pepper') applySaltPepper(imgData, width, height, prng, reverse);
+        // 'none' = stego-only, no pixel manipulation
     }
 
     // --- OBFUSQUER ---
@@ -1386,7 +1387,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let score = 0;
         const algo = algoSelect.value;
         const destructives = ['quantize-shuffle','color-crush','blur-noise','salt-pepper'];
-        score += destructives.includes(algo) ? 10 : 20;
+        if (algo === 'none') score += 5;
+        else score += destructives.includes(algo) ? 10 : 20;
         const pwd = obfPwd.value;
         if (pwd.length >= 6) score += 15; if (pwd.length >= 10) score += 10; if (pwd.length >= 14) score += 5;
         if (/[^A-Za-z0-9]/.test(pwd)) score += 5;
@@ -1413,6 +1415,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const destructives = ['quantize-shuffle','color-crush','blur-noise','salt-pepper'];
         const warn = document.getElementById('algo-warning');
         if (warn) warn.classList.toggle('hidden', !destructives.includes(algoSelect.value));
+        // Show/hide stego notice for 'none' mode
+        const noneNotice = document.getElementById('algo-none-notice');
+        if (noneNotice) noneNotice.classList.toggle('hidden', algoSelect.value !== 'none');
     });
     embedOriginalCb.addEventListener('change', updateSecurityScore);
     obfSig.addEventListener('input', updateSecurityScore);
@@ -1523,6 +1528,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const galleryEl = document.getElementById('effect-gallery');
     const algos = ['xor-shuffle','logistic-xor','cat-map','baker-map','affine-map','wave-shift','prime-scatter','rgb-shift','hilbert','spiral','zigzag','chirikov','henon','rubik','quantize-shuffle','color-crush','blur-noise','salt-pepper'];
     const algoNames = ['XOR','Logistic','Cat Map','Baker','Affine','Wave','Prime','RGB','Hilbert','Spiral','Zigzag','Chirikov','H\u00e9non','Rubik','Quantize','Crush','Blur','S&P'];
+    const REVERSIBLE_COUNT = 14; // first 14 are reversible, last 4 are destructive
     function buildGallery() {
         galleryEl.innerHTML = '';
         if (!originalImageFile) { galleryEl.innerHTML = '<p style="grid-column:span 4;text-align:center;color:var(--text-muted);font-size:0.75rem;">Chargez une image pour voir les effets</p>'; return; }
@@ -1532,14 +1538,50 @@ document.addEventListener('DOMContentLoaded', () => {
         const thumbCtx = thumbCanvas.getContext('2d');
         thumbCtx.drawImage(uploadedImage, 0, 0, thumbSize, thumbSize);
         const origData = thumbCtx.getImageData(0, 0, thumbSize, thumbSize);
+
+        // Section: "Aucun" (stego only)
+        const noneHeader = document.createElement('div');
+        noneHeader.className = 'gallery-section-header';
+        noneHeader.innerHTML = '🔒 St\u00e9go Pure';
+        noneHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:var(--primary);padding:4px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:2px;';
+        galleryEl.appendChild(noneHeader);
+        // None thumb = original image unchanged
+        const noneDiv = document.createElement('div');
+        noneDiv.className = 'effect-thumb' + (algoSelect.value === 'none' ? ' active' : '');
+        const noneCanvas = document.createElement('canvas');
+        noneCanvas.width = thumbSize; noneCanvas.height = thumbSize;
+        noneCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(origData.data), thumbSize, thumbSize), 0, 0);
+        noneDiv.appendChild(noneCanvas);
+        const noneLabel = document.createElement('div');
+        noneLabel.className = 'effect-thumb-label';
+        noneLabel.textContent = 'Aucun';
+        noneDiv.appendChild(noneLabel);
+        noneDiv.addEventListener('click', () => { algoSelect.value = 'none'; buildGallery(); updateSecurityScore(); });
+        galleryEl.appendChild(noneDiv);
+
+        // Section: Reversible
+        const revHeader = document.createElement('div');
+        revHeader.className = 'gallery-section-header';
+        revHeader.innerHTML = '\u2705 R\u00e9versibles';
+        revHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:#10b981;padding:6px 0 2px;border-bottom:1px solid rgba(16,185,129,0.2);margin-bottom:2px;margin-top:6px;';
+        galleryEl.appendChild(revHeader);
+
         algos.forEach((algo, i) => {
+            // Insert destructive header before first destructive algo
+            if (i === REVERSIBLE_COUNT) {
+                const destHeader = document.createElement('div');
+                destHeader.className = 'gallery-section-header';
+                destHeader.innerHTML = '\u26a0\ufe0f Destructifs';
+                destHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:#f59e0b;padding:6px 0 2px;border-bottom:1px solid rgba(245,158,11,0.2);margin-bottom:2px;margin-top:6px;';
+                galleryEl.appendChild(destHeader);
+            }
             const div = document.createElement('div');
             div.className = 'effect-thumb' + (algoSelect.value === algo ? ' active' : '');
+            if (i >= REVERSIBLE_COUNT) div.style.borderColor = 'rgba(245,158,11,0.3)';
             const c = document.createElement('canvas');
             c.width = thumbSize; c.height = thumbSize;
             const ctx = c.getContext('2d');
             const copy = new ImageData(new Uint8ClampedArray(origData.data), thumbSize, thumbSize);
-            const prng = getPRNG('gallery_preview_' + algo);
             applyAlgorithm(copy, thumbSize, thumbSize, algo, 'gallery_preview_' + algo, false);
             ctx.putImageData(copy, 0, 0);
             div.appendChild(c);
@@ -1730,12 +1772,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Store original for comparison
                 if (fi === 0) { compareOrigData = new Uint8Array(imgData.data); compareW = canvas.width; compareH = canvas.height; }
 
-                // Apply algorithm (try worker first)
-                try {
-                    const result = await workerApply(algo, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, false, glitchIntensity);
-                    imgData.data.set(result);
-                } catch(e) {
-                    applyAlgorithm(imgData, canvas.width, canvas.height, algo, seed, false);
+                // Apply algorithm (try worker first) — skip for 'none'
+                if (algo !== 'none') {
+                    try {
+                        const result = await workerApply(algo, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, false, glitchIntensity);
+                        imgData.data.set(result);
+                    } catch(e) {
+                        applyAlgorithm(imgData, canvas.width, canvas.height, algo, seed, false);
+                    }
                 }
 
                 // Watermark (LSB or DCT)
@@ -1754,7 +1798,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const buf = await fileToEmbed.arrayBuffer();
                     const comp = await compressData(buf);
                     const { encrypted, salt: pSalt, iv: pIv } = await encryptData(comp, pwd);
-                    metadata.payload = { data: arrayBufferToBase64(encrypted), salt: pSalt ? arrayBufferToBase64(pSalt) : null, iv: pIv ? arrayBufferToBase64(pIv) : null, mime: fileToEmbed.type };
+                    metadata.payload = { data: arrayBufferToBase64(encrypted), salt: pSalt ? arrayBufferToBase64(pSalt) : null, iv: pIv ? arrayBufferToBase64(pIv) : null, mime: fileToEmbed.type || 'application/octet-stream', filename: fileToEmbed.name };
                 }
 
                 let sigPayload = null;
@@ -1842,18 +1886,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // Extract watermark before revert (try both modes)
             if (meta.wm) {
                 let wm = null;
-                if (meta.wmMode === 'dct') wm = RobustWatermark.extract(imgData);
-                else wm = extractWatermark(imgData);
-                if (!wm) { // Fallback: try the other mode
-                    wm = meta.wmMode === 'dct' ? extractWatermark(imgData) : RobustWatermark.extract(imgData);
+                try {
+                    if (meta.wmMode === 'dct') wm = RobustWatermark.extract(imgData);
+                    else wm = extractWatermark(imgData);
+                } catch(e) { console.warn('WM extract primary fail:', e); }
+                if (!wm) {
+                    try { wm = meta.wmMode === 'dct' ? extractWatermark(imgData) : RobustWatermark.extract(imgData); }
+                    catch(e) { console.warn('WM extract fallback fail:', e); }
                 }
                 if (wm) { document.getElementById('revert-watermark-text').textContent = wm; document.getElementById('revert-watermark-container').classList.remove('hidden'); }
+                else { document.getElementById('revert-watermark-text').textContent = '(non décodé — image altérée ?)'; document.getElementById('revert-watermark-container').classList.remove('hidden'); }
             }
             let sigPayload = meta.sig;
             const lsbBytes = decodeLSB(imgData);
             if (lsbBytes) { const t = new TextDecoder().decode(lsbBytes); if (t.startsWith("LSB_SIG:")) sigPayload = JSON.parse(t.substring(8)); }
-            try { const result = await workerApply(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, true, 1); imgData.data.set(result); }
-            catch(e) { applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true); }
+            // Skip algo revert for 'none' (stego-only)
+            if (meta.alg !== 'none') {
+                try { const result = await workerApply(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, true, 1); imgData.data.set(result); }
+                catch(e) { applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true); }
+            }
             ctx.putImageData(imgData, 0, 0);
             const mathBlob = await new Promise(r => canvas.toBlob(r, meta.mime));
             if (currentMathObjectUrl) URL.revokeObjectURL(currentMathObjectUrl);
@@ -1867,9 +1918,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const blob = new Blob([original], { type: meta.payload.mime });
                     if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
                     currentHiddenObjectUrl = URL.createObjectURL(blob);
-                    revertHiddenPreview.src = currentHiddenObjectUrl;
+                    // If it's an image, show preview; otherwise show icon
+                    if (meta.payload.mime && meta.payload.mime.startsWith('image/')) {
+                        revertHiddenPreview.src = currentHiddenObjectUrl;
+                    } else {
+                        const extMap = {'application/pdf':'PDF','application/zip':'ZIP','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'DOCX','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'XLSX','application/vnd.openxmlformats-officedocument.presentationml.presentation':'PPTX','text/plain':'TXT','application/json':'JSON'};
+                        const extLabel = extMap[meta.payload.mime] || meta.payload.mime.split('/')[1]?.toUpperCase() || 'FICHIER';
+                        revertHiddenPreview.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120"><rect width="200" height="120" rx="12" fill="%23334155"/><text x="100" y="55" text-anchor="middle" fill="%2394a3b8" font-size="40">\ud83d\udcc4</text><text x="100" y="90" text-anchor="middle" fill="%23e2e8f0" font-size="18">' + extLabel + '</text></svg>');
+                    }
                     revertHiddenContainer.classList.remove('hidden');
-                } catch(e) {}
+                } catch(e) { console.warn('Payload extraction failed:', e); }
             }
             if (sigPayload) {
                 try {
@@ -1885,7 +1943,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Download buttons need re-binding since we cloned
     document.getElementById('btn-download-math')?.addEventListener('click', () => { const a = document.createElement('a'); a.href = currentMathObjectUrl; a.download = `restored_${Date.now()}.png`; a.click(); });
-    document.getElementById('btn-download-hidden')?.addEventListener('click', () => { const a = document.createElement('a'); a.href = currentHiddenObjectUrl; a.download = `extracted_${Date.now()}.png`; a.click(); });
+    document.getElementById('btn-download-hidden')?.addEventListener('click', () => {
+        const a = document.createElement('a');
+        a.href = currentHiddenObjectUrl;
+        // Detect extension from blob type
+        const ext = currentHiddenObjectUrl ? 'bin' : 'png';
+        fetch(currentHiddenObjectUrl).then(r => {
+            const mime = r.headers.get('Content-Type') || 'application/octet-stream';
+            const extensions = {'image/png':'png','image/jpeg':'jpg','image/webp':'webp','application/pdf':'pdf','application/zip':'zip','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx','application/vnd.openxmlformats-officedocument.presentationml.presentation':'pptx','text/plain':'txt','application/json':'json'};
+            a.download = `extracted_${Date.now()}.${extensions[mime] || mime.split('/')[1] || 'bin'}`;
+            a.click();
+        }).catch(() => { a.download = `extracted_${Date.now()}.bin`; a.click(); });
+    });
 
     // --- File Preview for Share receiver ---
     function showFilePreview(blob, filename) {

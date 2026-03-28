@@ -314,6 +314,7 @@ function applySaltPepper(data, w, h, prng, rev) {
 }
 
 const ALGOS = {
+    'none': (data) => new Uint8Array(data), // stego-only: identity
     'xor-shuffle': applyXorShuffle, 'logistic-xor': applyLogisticXOR, 'cat-map': applyCatMap,
     'baker-map': applyBakerMap, 'affine-map': applyAffineMap, 'wave-shift': applyWaveShift,
     'prime-scatter': applyPrimeScatter, 'rgb-shift': applyRgbShift,
