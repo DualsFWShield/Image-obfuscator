@@ -353,10 +353,18 @@ function applyBlockShuffle8(data, w, h, prng, rev) { return applyBlockShuffleWor
 function applyBlockShuffle16(data, w, h, prng, rev) { return applyBlockShuffleWorker(data, w, h, prng, rev, 16); }
 
 function applyDFWSWorker(data, w, h, prng, reverse) {
-    const BS = 8;
+    const BS = 16;
     const bw = Math.floor(w / BS), bh = Math.floor(h / BS);
     const numBlocks = bw * bh;
-    if (numBlocks < 2) return data;
+    if (numBlocks < 5) return data;
+
+    // Sync Anchors: Corners (index 0, top-right, bottom-left, bottom-right)
+    const anchorIndices = new Set([
+        0,                      // Top-left
+        bw - 1,                 // Top-right
+        bw * (bh - 1),          // Bottom-left
+        numBlocks - 1           // Bottom-right
+    ]);
 
     const transforms = new Array(numBlocks);
     for (let i = 0; i < numBlocks; i++) {
@@ -367,8 +375,13 @@ function applyDFWSWorker(data, w, h, prng, reverse) {
             invert: prng() > 0.5
         };
     }
-    const perm = Array.from({length: numBlocks}, (_, i) => i);
-    for (let i = numBlocks - 1; i > 0; i--) {
+    
+    // Create permutation excluding anchors
+    const shuffledIndices = [];
+    for (let i = 0; i < numBlocks; i++) if (!anchorIndices.has(i)) shuffledIndices.push(i);
+    
+    const perm = [...shuffledIndices];
+    for (let i = perm.length - 1; i > 0; i--) {
         const j = Math.floor(prng() * (i + 1));
         [perm[i], perm[j]] = [perm[j], perm[i]];
     }
@@ -377,16 +390,31 @@ function applyDFWSWorker(data, w, h, prng, reverse) {
     const dst = new Uint8Array(src.length);
     dst.set(src);
 
-    function transformBlock(srcBuf, dstBuf, sx, sy, dx, dy, tf, rev) {
+    function transformBlock(srcBuf, dstBuf, sx, sy, dx, dy, tf, rev, isAnchor) {
         for (let by = 0; by < BS; by++) {
             for (let bx = 0; bx < BS; bx++) {
+                const si = ((sy + by) * w + (sx + bx)) * 4;
+                // If it's an anchor, we could draw a pattern, but for now we just keep it fixed
+                // to act as a reference for the normalization logic.
+                if (isAnchor && !rev) {
+                    // Draw a checkerboard pattern in anchors to resist compression
+                    const pattern = ((Math.floor(bx/4) + Math.floor(by/4)) % 2 === 0) ? 255 : 0;
+                    dstBuf[((dy + by) * w + (dx + bx)) * 4] = pattern;
+                    dstBuf[((dy + by) * w + (dx + bx)) * 4 + 1] = pattern;
+                    dstBuf[((dy + by) * w + (dx + bx)) * 4 + 2] = pattern;
+                    dstBuf[((dy + by) * w + (dx + bx)) * 4 + 3] = 255;
+                    continue;
+                }
+
                 let rx = rev ? (tf.hFlip ? BS - 1 - bx : bx) : bx;
                 let ry = rev ? (tf.vFlip ? BS - 1 - by : by) : by;
                 let ox = !rev ? (tf.hFlip ? BS - 1 - bx : bx) : bx;
                 let oy = !rev ? (tf.vFlip ? BS - 1 - by : by) : by;
-                const si = ((sy + ry) * w + (sx + rx)) * 4;
+                
+                const cur_si = ((sy + ry) * w + (sx + rx)) * 4;
                 const di = ((dy + oy) * w + (dx + ox)) * 4;
-                let r = srcBuf[si], g = srcBuf[si + 1], b = srcBuf[si + 2];
+                
+                let r = srcBuf[cur_si], g = srcBuf[cur_si + 1], b = srcBuf[cur_si + 2];
                 if (!rev) {
                     if (tf.chanRot === 1) { const t = r; r = g; g = b; b = t; }
                     else if (tf.chanRot === 2) { const t = r; r = b; b = g; g = t; }
@@ -401,19 +429,28 @@ function applyDFWSWorker(data, w, h, prng, reverse) {
         }
     }
 
+    // Process Anchors
+    anchorIndices.forEach(idx => {
+        const x = (idx % bw) * BS, y = Math.floor(idx / bw) * BS;
+        transformBlock(src, dst, x, y, x, y, null, reverse, true);
+    });
+
+    // Process Permutable Blocks
     if (!reverse) {
-        for (let i = 0; i < numBlocks; i++) {
-            const srcX = (i % bw) * BS, srcY = Math.floor(i / bw) * BS;
+        for (let i = 0; i < shuffledIndices.length; i++) {
+            const srcIdx = shuffledIndices[i];
             const dstIdx = perm[i];
-            const dstX = (dstIdx % bw) * BS, dstY = Math.floor(dstIdx / bw) * BS;
-            transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], false);
+            const sx = (srcIdx % bw) * BS, sy = Math.floor(srcIdx / bw) * BS;
+            const dx = (dstIdx % bw) * BS, dy = Math.floor(dstIdx / bw) * BS;
+            transformBlock(src, dst, sx, sy, dx, dy, transforms[srcIdx], false, false);
         }
     } else {
-        for (let i = 0; i < numBlocks; i++) {
-            const shuffledIdx = perm[i];
-            const srcX = (shuffledIdx % bw) * BS, srcY = Math.floor(shuffledIdx / bw) * BS;
-            const dstX = (i % bw) * BS, dstY = Math.floor(i / bw) * BS;
-            transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], true);
+        for (let i = 0; i < shuffledIndices.length; i++) {
+            const dstIdx = shuffledIndices[i];
+            const srcIdx = perm[i];
+            const sx = (srcIdx % bw) * BS, sy = Math.floor(srcIdx / bw) * BS;
+            const dx = (dstIdx % bw) * BS, dy = Math.floor(dstIdx / bw) * BS;
+            transformBlock(src, dst, sx, sy, dx, dy, transforms[dstIdx], true, false);
         }
     }
     return dst;

@@ -790,37 +790,63 @@ document.addEventListener('DOMContentLoaded', () => {
             return tmp;
         },
         // Mid-frequency positions for embedding (survive JPEG quantization)
-        MID_FREQ: [[2,5],[3,4],[4,3],[5,2],[1,6],[6,1],[3,3],[4,4]],
-        QUANT_STEP: 25, // QIM quantization step
+        MID_FREQ: [[1,2],[2,1],[3,2],[2,3],[1,4],[4,1],[3,3],[4,4],[2,2],[5,5]],
+        QUANT_STEP: 35, // Base step, will be adaptive
+
+        rgbToY(r, g, b) { return 0.299*r + 0.587*g + 0.114*b; },
+        yToRgb(y, r, g, b) {
+            const oldY = this.rgbToY(r, g, b);
+            const dy = y - oldY;
+            return [Math.max(0,Math.min(255, r + dy)), Math.max(0,Math.min(255, g + dy)), Math.max(0,Math.min(255, b + dy))];
+        },
 
         embed(imgData, text) {
             const w = imgData.width, h = imgData.height, d = imgData.data;
             const bytes = new TextEncoder().encode(text.substring(0, 16));
             const bits = [];
-            // Length (8 bits) + data
             for (let i = 0; i < 8; i++) bits.push((bytes.length >> i) & 1);
             for (const b of bytes) for (let j = 0; j < 8; j++) bits.push((b >> j) & 1);
             if (bits.length === 0) return;
-            const Q = this.QUANT_STEP;
-            // Process each 8x8 block, embed bits redundantly
+
+            const numBits = bits.length;
+            const freqPerBlock = this.MID_FREQ.length;
+
             for (let by = 0; by + 8 <= h; by += 8) {
                 for (let bx = 0; bx + 8 <= w; bx += 8) {
-                    // Work on green channel (human eye most sensitive = less noticeable changes)
                     const block = new Float64Array(64);
-                    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) block[r*8+c] = d[((by+r)*w+(bx+c))*4+1];
+                    let avgY = 0;
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const i = ((by+r)*w+(bx+c))*4;
+                            block[r*8+c] = this.rgbToY(d[i], d[i+1], d[i+2]);
+                            avgY += block[r*8+c];
+                        }
+                    }
+                    avgY /= 64;
+
+                    // Adaptive Q: weaker in dark areas to prevent grain
+                    const Q = this.QUANT_STEP * (0.4 + (avgY / 255) * 0.8);
                     const dct = this.dct2d(block);
-                    // Embed bits using QIM in mid-frequency coefficients
-                    for (let bi = 0; bi < Math.min(bits.length, this.MID_FREQ.length); bi++) {
+                    
+                    // Packet Mode: every 4x4 block cluster (32x32px) repeats the whole payload
+                    const blockIdxInMacro = (Math.floor((by%32)/8) * 4 + Math.floor((bx%32)/8));
+                    
+                    for (let bi = 0; bi < freqPerBlock; bi++) {
+                        const bitIdx = (blockIdxInMacro * freqPerBlock + bi) % numBits;
                         const [r, c] = this.MID_FREQ[bi];
+                        const bit = bits[bitIdx];
                         const coef = dct[r*8+c];
-                        const bit = bits[bi % bits.length];
-                        // QIM: quantize to nearest value that encodes the bit
                         const quantized = Math.round(coef / Q) * Q;
                         dct[r*8+c] = quantized + (bit ? Q/4 : -Q/4);
                     }
+
                     const spatial = this.idct2d(dct);
-                    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
-                        d[((by+r)*w+(bx+c))*4+1] = Math.max(0, Math.min(255, Math.round(spatial[r*8+c])));
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const i = ((by+r)*w+(bx+c))*4;
+                            const [nr, ng, nb] = this.yToRgb(spatial[r*8+c], d[i], d[i+1], d[i+2]);
+                            d[i] = nr; d[i+1] = ng; d[i+2] = nb;
+                        }
                     }
                 }
             }
@@ -828,30 +854,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
         extract(imgData) {
             const w = imgData.width, h = imgData.height, d = imgData.data;
-            const Q = this.QUANT_STEP;
-            const numBitsPerBlock = this.MID_FREQ.length;
-            // Collect votes for each bit position
-            const maxBits = 8 + 16 * 8; // 8 len bits + max 16 chars
+            const maxBits = 8 + 16 * 8;
             const votes = new Array(maxBits).fill(null).map(() => [0, 0]);
-            let blockCount = 0;
+            const freqPerBlock = this.MID_FREQ.length;
+
+            // Sample with high coverage
             for (let by = 0; by + 8 <= h; by += 8) {
                 for (let bx = 0; bx + 8 <= w; bx += 8) {
                     const block = new Float64Array(64);
-                    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) block[r*8+c] = d[((by+r)*w+(bx+c))*4+1];
+                    let avgY = 0;
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const i = ((by+r)*w+(bx+c))*4;
+                            block[r*8+c] = this.rgbToY(d[i], d[i+1], d[i+2]);
+                            avgY += block[r*8+c];
+                        }
+                    }
+                    avgY /= 64;
+                    const Q = this.QUANT_STEP * (0.4 + (avgY / 255) * 0.8);
                     const dct = this.dct2d(block);
-                    for (let bi = 0; bi < Math.min(maxBits, numBitsPerBlock); bi++) {
+                    
+                    const blockIdxInMacro = (Math.floor((by%32)/8) * 4 + Math.floor((bx%32)/8));
+                    
+                    for (let bi = 0; bi < freqPerBlock; bi++) {
+                        const bitIdx = (blockIdxInMacro * freqPerBlock + bi) % maxBits;
                         const [r, c] = this.MID_FREQ[bi];
                         const coef = dct[r*8+c];
                         const quantized = Math.round(coef / Q) * Q;
-                        const remainder = coef - quantized;
-                        const detectedBit = remainder > 0 ? 1 : 0;
-                        if (bi < maxBits) votes[bi][detectedBit]++;
+                        const bit = (coef - quantized) > 0 ? 1 : 0;
+                        votes[bitIdx][bit]++;
                     }
-                    blockCount++;
                 }
             }
-            if (blockCount < 4) return null;
-            // Majority vote
+
             const finalBits = votes.map(v => v[1] > v[0] ? 1 : 0);
             let len = 0;
             for (let i = 0; i < 8; i++) len |= finalBits[i] << i;
@@ -859,13 +894,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const bytes = new Uint8Array(len);
             for (let i = 0; i < len; i++) {
                 let b = 0;
-                for (let j = 0; j < 8; j++) { const idx = 8 + i*8 + j; if (idx < finalBits.length) b |= finalBits[idx] << j; }
+                for (let j = 0; j < 8; j++) {
+                    const idx = 8 + i*8 + j;
+                    if (idx < finalBits.length) b |= finalBits[idx] << j;
+                }
                 bytes[i] = b;
             }
             try {
                 const t = new TextDecoder().decode(bytes);
                 if (/^[\x20-\x7E]+$/.test(t)) return t;
             } catch(e) {}
+            return null;
+        },
+        getDimensions(imgData) {
+            const wm = this.extract(imgData);
+            if (wm && wm.startsWith('DIM:')) {
+                const parts = wm.split(':');
+                return { w: parseInt(parts[1]), h: parseInt(parts[2]), text: parts[3] };
+            }
             return null;
         }
     };
@@ -1989,7 +2035,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let activeWmText = wmText;
                 let activeWmMode = wmMode;
                 if (algo === 'dfws') {
-                    activeWmText = "DualsFWShield";
+                    activeWmText = `DIM:${imgData.width}:${imgData.height}:DFWS`;
                     activeWmMode = 'dct';
                 }
                 if (activeWmText) {
@@ -2090,27 +2136,44 @@ document.addEventListener('DOMContentLoaded', () => {
             const tailString = new TextDecoder().decode(buf.slice(Math.max(0, buf.byteLength - 1000000)));
             const magicIdx = tailString.lastIndexOf(MAGIC_MARKER);
             
-            let meta;
+            let meta, normalizedCanvas = null;
             if (magicIdx === -1) {
                 // FALLBACK: Metadata lost (Crop/JPEG). Try to detect DFWS via Watermark
                 const canvas = document.createElement('canvas');
                 canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(targetObfuscatedImage, 0, 0);
-                const wm = RobustWatermark.extract(ctx.getImageData(0,0,canvas.width,canvas.height));
-                if (wm && wm.startsWith("DualsFW")) {
-                    meta = { v: 5, alg: 'dfws', pwd: !!revPwd.value, robust: true, salt: 'FALLBACK' };
-                    showToast('🛡️ Signature DualsFWShield détectée. Restauration d\'urgence...', 'info');
+                const wmDim = RobustWatermark.getDimensions(ctx.getImageData(0,0,canvas.width,canvas.height));
+                if (wmDim && wmDim.w && wmDim.h) {
+                    showToast(`🔍 Watermark détecté: DFWS (${wmDim.w}x${wmDim.h})`, "info");
+                    meta = { v: 5, alg: 'dfws', pwd: false, robust: true, salt: 'public' };
+                    normalizedCanvas = document.createElement('canvas');
+                    normalizedCanvas.width = wmDim.w; normalizedCanvas.height = wmDim.h;
+                    normalizedCanvas.getContext('2d').drawImage(targetObfuscatedImage, 0, 0, wmDim.w, wmDim.h);
                 } else {
-                    throw new Error("Pas une image Obscurify ou métadonnées absentes.");
+                    throw new Error("Métadonnées et Watermark absents. Image non reconnue.");
                 }
             } else {
                 const jsonStart = tailString.substring(0, magicIdx).lastIndexOf('{"v":5');
                 if (jsonStart === -1) throw new Error("Métadonnées altérées.");
                 meta = JSON.parse(tailString.substring(jsonStart, magicIdx));
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(targetObfuscatedImage, 0, 0);
+                const wmDim = RobustWatermark.getDimensions(ctx.getImageData(0,0,canvas.width,canvas.height));
+                if (wmDim && (wmDim.w !== targetObfuscatedImage.width || wmDim.h !== targetObfuscatedImage.height)) {
+                    showToast(`⚠️ Redimensionnement détecté. Restauration canonique (${wmDim.w}x${wmDim.h})...`, "warning");
+                    normalizedCanvas = document.createElement('canvas');
+                    normalizedCanvas.width = wmDim.w; normalizedCanvas.height = wmDim.h;
+                    normalizedCanvas.getContext('2d').drawImage(targetObfuscatedImage, 0, 0, wmDim.w, wmDim.h);
+                }
             }
 
-            if (meta.pwd && !revPwd.value) throw new Error("Mot de passe requis.");
+            if (meta.pwd && !revPwd.value) {
+                showToast("⚠️ Image protégée. Tentative sans mot de passe (résultat incorrect).", "info");
+            }
 
             let saltToUse = meta.salt;
             if (meta.robust) {
@@ -2119,11 +2182,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const seed = meta.pwd ? revPwd.value + saltToUse : 'public' + saltToUse;
             
-            const canvas = document.createElement('canvas');
-            canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
+            const canvas = normalizedCanvas || document.createElement('canvas');
+            if (!normalizedCanvas) {
+                canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
+                canvas.getContext('2d').drawImage(targetObfuscatedImage, 0, 0);
+            }
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(targetObfuscatedImage, 0, 0);
             const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
             // Extract watermark before revert (try both modes)
             if (meta.wm) {
                 let wm = null;
@@ -2135,7 +2201,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     try { wm = meta.wmMode === 'dct' ? extractWatermark(imgData) : RobustWatermark.extract(imgData); }
                     catch(e) { console.warn('WM extract fallback fail:', e); }
                 }
-                if (wm) { document.getElementById('revert-watermark-text').textContent = wm; document.getElementById('revert-watermark-container').classList.remove('hidden'); }
+                if (wm) { 
+                    let displayWm = wm;
+                    if (wm.startsWith('DIM:')) {
+                        const p = wm.split(':');
+                        displayWm = `${p[3] || 'DFWS'} (${p[1]}x${p[2]})`;
+                    }
+                    document.getElementById('revert-watermark-text').textContent = displayWm; 
+                    document.getElementById('revert-watermark-container').classList.remove('hidden'); 
+                }
                 else { document.getElementById('revert-watermark-text').textContent = '(non décodé — image altérée ?)'; document.getElementById('revert-watermark-container').classList.remove('hidden'); }
             }
             let sigPayload = meta.sig;
@@ -2225,12 +2299,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Try two modes: Normal (random salt - unlikely to work if meta lost) and Robust (deterministic salt)
                 const trials = [
-                    { salt: 'public', label: 'Public' },
-                    { salt: robustSalt, label: 'Robust' }
+                    { seed: 'public' + 'public', label: 'Public_NoPwd' },
+                    { seed: (pwd || 'public') + 'public', label: 'Normal' },
+                    { seed: (pwd || 'public') + robustSalt, label: 'Robust' }
                 ];
 
                 for (const trial of trials) {
-                    const seed = (pwd || 'public') + trial.salt;
+                    const seed = trial.seed;
                     const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
                     const ctx = canvas.getContext('2d'); ctx.drawImage(targetObfuscatedImage, 0, 0);
                     const imgData = ctx.getImageData(0, 0, w, h);
