@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
-    <script src="share/lib/jszip.min.js"></script>
+
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -248,7 +248,7 @@
                     <p style="color:var(--text-muted);font-size:0.85rem;">ou cliquez pour parcourir</p>
                     <input type="file" id="share-file-input" multiple hidden>
                 </div>
-                <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;">
+                <div style="margin-top:12px;display:none;gap:8px;justify-content:center;">
                     <button id="open-audio-btn" class="btn btn-secondary" style="width:auto;padding:8px 16px;font-size:0.85rem;">📡 Audio Receiver</button>
                 </div>
                 <div class="hidden" id="share-options-panel">
@@ -260,17 +260,17 @@
                         <div class="share-toggle-row"><label class="toggle-switch"><input type="checkbox" id="share-lossy-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>Compression Lossy (Images)</span></label></div>
                         <div class="share-toggle-row"><label class="toggle-switch"><input type="checkbox" id="share-encrypt-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>Chiffrer avec mot de passe</span></label></div>
                         <div id="share-pwd-container" class="hidden" style="margin-bottom:16px;"><input type="password" id="share-sender-pwd" class="share-input" placeholder="Mot de passe"></div>
-                        <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;margin-top:8px;">
+                        <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;margin-top:8px;display:none;">
                             <label class="toggle-switch"><input type="checkbox" id="share-beam-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>📡 Infinity Beam (P2P)</span></label>
                             <div id="share-beam-info" class="hidden" style="background:rgba(0,242,255,0.08);padding:10px;border-radius:8px;font-size:0.8rem;color:#ccffff;margin-bottom:12px;"><strong>⚡ Transfert Device-to-Device</strong><br>Taille illimitée. <span style="color:#ff9999;">⚠️ Ne fermez pas cet onglet!</span></div>
                         </div>
-                        <div class="advanced-toggle" id="share-advanced-toggle"><span>Options Avancées</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+                        <div class="advanced-toggle" id="share-advanced-toggle" style="display:none;"><span>Options Avancées</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
                         <div id="share-advanced-panel" class="hidden" style="background:rgba(0,0,0,0.2);padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);margin-bottom:14px;">
                             <div class="setting-row"><label>💣 Time Bomb</label><select id="share-timebomb"><option value="0">Désactivé</option><option value="5">5 min</option><option value="60">1h</option><option value="1440">24h</option></select></div>
                             <div class="setting-row"><label>🎨 Vibe Share</label><select id="share-vibe"><option value="default">Défaut</option><option value="cyberpunk">Cyberpunk</option><option value="sunset">Sunset</option><option value="matrix">Matrix</option><option value="zen">Zen</option></select></div>
                             <div class="setting-row"><label class="toggle-switch" style="margin-bottom:0;"><input type="checkbox" id="share-geo-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>📍 Geo-Lock</span></label></div>
-                            <div class="setting-row" style="margin-top:12px;"><button id="share-audio-tx-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🎼 Audio Key (Tx)</button></div>
-                            <div class="setting-row" style="margin-top:8px;"><button id="share-camo-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🥸 Camouflage</button></div>
+                            <div class="setting-row" style="margin-top:12px;display:none;"><button id="share-audio-tx-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🎼 Audio Key (Tx)</button></div>
+                            <div class="setting-row" style="margin-top:8px;display:none;"><button id="share-camo-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🥸 Camouflage</button></div>
                         </div>
                         <button id="share-generate-btn" class="btn btn-primary w-full">Générer le Lien</button>
                     </div>
@@ -363,11 +363,11 @@
 
     <div id="toast-container"></div>
 
-    <script src="share/lib/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="share/p2p.js"></script>
-    <script src="share/audio.js"></script>
-    <script src="share/features.js"></script>
+    <!-- <script src="share/p2p.js"></script> -->
+    <!-- <script src="share/audio.js"></script> -->
+    <!-- <script src="share/features.js"></script> -->
     <script src="app.js"></script>
     <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
 </body>

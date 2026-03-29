@@ -1283,28 +1283,34 @@ document.addEventListener('DOMContentLoaded', () => {
     S.beamToggle.addEventListener('change', () => S.beamInfo.classList.toggle('hidden', !S.beamToggle.checked));
     S.advancedToggle.addEventListener('click', () => S.advancedPanel.classList.toggle('hidden'));
 
-    // Audio
+    /* 
+    // Audio (Missing share/audio.js)
     S.openAudioBtn.addEventListener('click', () => S.audioModal.classList.remove('hidden'));
     S.closeAudioBtn.addEventListener('click', () => { S.audioModal.classList.add('hidden'); if (window.audioComp) window.audioComp.stopListening(); S.startListenBtn.classList.remove('hidden'); S.stopListenBtn.classList.add('hidden'); });
     S.startListenBtn.addEventListener('click', () => {
         S.startListenBtn.classList.add('hidden'); S.stopListenBtn.classList.remove('hidden');
         S.streamOutput.innerText = 'Écoute des signaux Aether...';
-        window.audioComp.startListening(
+        if (window.audioComp) window.audioComp.startListening(
             data => { const ctx = S.audioCanvas.getContext('2d'), w = S.audioCanvas.width, h = S.audioCanvas.height; ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h); const bw = (w/data.length)*2.5; let x = 0; for (let i=0;i<data.length;i++) { const bh=data[i]/2; ctx.fillStyle=`rgb(${bh+100},50,200)`; ctx.fillRect(x,h-bh,bw,bh); x+=bw+1; } },
             bit => { const sp = document.createElement('span'); sp.innerText = bit; sp.style.color = bit === 1 ? '#0f0' : '#555'; S.streamOutput.appendChild(sp); S.streamOutput.scrollTop = S.streamOutput.scrollHeight; }
         );
     });
-    S.stopListenBtn.addEventListener('click', () => { window.audioComp.stopListening(); S.startListenBtn.classList.remove('hidden'); S.stopListenBtn.classList.add('hidden'); S.streamOutput.innerText += '\n[Arrêté]'; });
-    S.audioTxBtn.addEventListener('click', () => { if (shareFile) window.audioComp.transmit(shareFile.name); else showToast('Fichier requis', 'error'); });
+    S.stopListenBtn.addEventListener('click', () => { if (window.audioComp) window.audioComp.stopListening(); S.startListenBtn.classList.remove('hidden'); S.stopListenBtn.classList.add('hidden'); S.streamOutput.innerText += '\n[Arrêté]'; });
+    S.audioTxBtn.addEventListener('click', () => { if (shareFile && window.audioComp) window.audioComp.transmit(shareFile.name); else showToast('Fichier requis', 'error'); });
+    */
 
-    // Camouflage
-    S.camoBtn.addEventListener('click', () => Features.toggleCamouflage(true));
-    if (S.camoExitTrigger) S.camoExitTrigger.addEventListener('dblclick', () => Features.toggleCamouflage(false));
-    let escCount = 0, escTimer = null;
-    document.addEventListener('keydown', e => {
-        if (!document.body.classList.contains('camo-mode')) return;
-        if (e.key === 'Escape') { escCount++; if (escTimer) clearTimeout(escTimer); escTimer = setTimeout(() => escCount = 0, 500); if (escCount >= 3) { Features.toggleCamouflage(false); escCount = 0; } }
-    });
+    /*
+    // Camouflage (Missing share/features.js)
+    if (typeof Features !== 'undefined') {
+        S.camoBtn.addEventListener('click', () => Features.toggleCamouflage(true));
+        if (S.camoExitTrigger) S.camoExitTrigger.addEventListener('dblclick', () => Features.toggleCamouflage(false));
+        let escCount = 0, escTimer = null;
+        document.addEventListener('keydown', e => {
+            if (!document.body.classList.contains('camo-mode')) return;
+            if (e.key === 'Escape') { escCount++; if (escTimer) clearTimeout(escTimer); escTimer = setTimeout(() => escCount = 0, 500); if (escCount >= 3) { Features.toggleCamouflage(false); escCount = 0; } }
+        });
+    }
+    */
 
     // Copy & QR
     S.copyBtn.addEventListener('click', () => { navigator.clipboard.writeText(S.shareUrl.value); showToast('Lien copié !', 'success'); });
@@ -1345,6 +1351,8 @@ document.addEventListener('DOMContentLoaded', () => {
     S.generateBtn.addEventListener('click', async () => {
         if (!shareFile) return;
         if (S.beamToggle.checked) {
+            alert("Beam P2P est temporairement indisponible (share/p2p.js manquant)");
+            /*
             setShareLoading(true, 'Initialisation Beam...');
             try {
                 const peerId = await window.p2p.init();
@@ -1358,6 +1366,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showShareResult(hash);
                 S.statusMsg.innerText = '📡 Beam Active: En attente du destinataire...';
             } catch(e) { showToast('Erreur Beam: ' + e.message, 'error'); }
+            */
             setShareLoading(false);
             return;
         }
@@ -1370,8 +1379,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const compressed = await ShareEncoder.compressStream(blob.stream());
                 const header = { filename: shareFile.name, encrypted: S.encryptToggle.checked };
                 const vibe = S.vibe.value; if (vibe !== 'default') header.vibe = vibe;
-                const tb = parseInt(S.timebomb.value); if (tb > 0) header.expiry = Features.getExpiryTimestamp(tb);
-                if (S.geoToggle.checked) { setShareLoading(true, 'Géolocalisation...'); header.geo = await Features.getCurrentPosition(); }
+                const tb = parseInt(S.timebomb.value); if (tb > 0 && typeof Features !== 'undefined') header.expiry = Features.getExpiryTimestamp(tb);
+                if (S.geoToggle.checked && typeof Features !== 'undefined') { setShareLoading(true, 'Géolocalisation...'); header.geo = await Features.getCurrentPosition(); }
                 let payload;
                 if (header.encrypted) {
                     const pwd = S.senderPwd.value; if (!pwd) throw new Error('Mot de passe requis');
@@ -1410,6 +1419,8 @@ document.addEventListener('DOMContentLoaded', () => {
         S.downloadBtn.disabled = true; S.decryptPanel.classList.add('hidden');
         try {
             if (hash.startsWith('BEAM|')) {
+                alert("Beam P2P est temporairement indisponible (share/p2p.js manquant)");
+                /*
                 const p = hash.split('|'), peerId = p[1];
                 const hdr = { filename: decodeURIComponent(p[2]), beam: true };
                 S.recvFilename.innerText = '📡 ' + hdr.filename;
@@ -1438,6 +1449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }, err => { S.recvFilesize.innerText = 'Connexion échouée.'; showToast('Erreur P2P: ' + err.message, 'error'); });
+                */
                 return;
             }
             let header, payload;
@@ -1450,9 +1462,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             shareReceivedHeader = header; shareReceivedHeader.payload = payload;
             S.recvFilename.innerText = (header.encrypted ? '🔒 ' : '') + header.filename;
-            if (header.expiry) { const st = Features.checkExpiry(header.expiry); if (st.expired) { S.recvFilename.innerText = '💥 Lien Expiré'; S.recvFilesize.innerText = 'Auto-détruit.'; return; } }
-            if (header.geo) { S.recvFilesize.innerText = 'Vérification position...'; const gs = await Features.verifyLocation(header.geo.lat, header.geo.lng); if (!gs.allowed) { S.recvFilename.innerText = '📍 Accès Refusé'; S.recvFilesize.innerText = gs.error || 'Mauvaise position.'; return; } }
-            if (header.vibe) Features.applyVibe(header.vibe);
+            if (header.expiry && typeof Features !== 'undefined') { const st = Features.checkExpiry(header.expiry); if (st.expired) { S.recvFilename.innerText = '💥 Lien Expiré'; S.recvFilesize.innerText = 'Auto-détruit.'; return; } }
+            if (header.geo && typeof Features !== 'undefined') { S.recvFilesize.innerText = 'Vérification position...'; const gs = await Features.verifyLocation(header.geo.lat, header.geo.lng); if (!gs.allowed) { S.recvFilename.innerText = '📍 Accès Refusé'; S.recvFilesize.innerText = gs.error || 'Mauvaise position.'; return; } }
+            if (header.vibe && typeof Features !== 'undefined') Features.applyVibe(header.vibe);
             if (header.encrypted) { S.recvFilesize.innerText = 'Fichier Chiffré'; S.decryptPanel.classList.remove('hidden'); }
             else { S.recvFilesize.innerText = 'Traitement...'; setTimeout(async () => { const cb = ShareEncoder.base64ToBlob(payload); shareReceivedBlob = await ShareEncoder.decompressBlob(cb); S.recvFilesize.innerText = formatSize(shareReceivedBlob.size); S.downloadBtn.disabled = false; }, 100); }
         } catch(e) { S.recvFilename.innerText = 'Erreur de parsing'; S.recvFilesize.innerText = 'URL invalide'; }
