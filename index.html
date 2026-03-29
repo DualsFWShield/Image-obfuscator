@@ -68,34 +68,40 @@
 
             <div class="controls panel">
                 <div class="control-group">
-                    <label>Force et Algorithme <button class="help-btn" data-tooltip="Choisissez comment l'image sera transformée.&#10;&#10;• Réversibles : l'image peut être restaurée à 100% avec le bon mot de passe. Ce sont des bijections mathématiques (chaque pixel a une position unique).&#10;&#10;• Destructifs : des données sont perdues (quantification, flou...). La restauration des pixels est IMPOSSIBLE. Seul le payload stéganographique (image cachée) permet de récupérer l'original.">?</button></label>
+                    <label>Force et Algorithme <button class="help-btn" data-tooltip="Choisissez comment l'image sera transformée.&#10;&#10;• Réversibles : l'image peut être restaurée à 100% avec le bon mot de passe (PNG uniquement).&#10;&#10;• Destructifs : des données sont perdues. Seul le payload stéganographique permet de récupérer l'original.&#10;&#10;📊 Résistance à la compression (JPEG/WhatsApp) :&#10;🟢 Forte = l'effet visuel survit à JPEG Q50+&#10;🟡 Moyenne = effet partiellement dégradé&#10;🔴 Faible = l'effet peut disparaître&#10;&#10;⚠️ La RÉVERSIBILITÉ mathématique est TOUJOURS perdue après compression JPEG. Exportez en PNG pour garantir la restauration.">?</button></label>
                     <select id="algo-select">
                         <optgroup label="🔒 Stéganographie Pure (Aucune Obfuscation)">
                             <option value="none">Aucun (cacher un fichier uniquement)</option>
                         </optgroup>
                         <optgroup label="✅ 100% Réversibles (Bijections Sans Perte)">
-                            <option value="xor-shuffle" selected>Chaos Absolu (XOR & Permutation)</option>
-                            <option value="logistic-xor">Bruit Non-Linéaire (Logistique & Hénon)</option>
-                            <option value="cat-map">Torsion Fractale (Chat d'Arnold)</option>
-                            <option value="baker-map">Pétrissage Infini (Carte de Baker)</option>
-                            <option value="affine-map">Translation Affine Modulo</option>
-                            <option value="wave-shift">Ondes Géométriques (Sinusoïdal)</option>
-                            <option value="prime-scatter">Dispersion Modulaire (Premiers)</option>
-                            <option value="rgb-shift">Aberration Chromatique (RGB)</option>
-                            <option value="hilbert">Courbe de Hilbert (Space-Filling)</option>
-                            <option value="spiral">Scan Spiral (Centre→Bords)</option>
-                            <option value="zigzag">Zigzag Diagonal (Style JPEG)</option>
-                            <option value="chirikov">Carte de Chirikov (Standard Map)</option>
-                            <option value="henon">Attracteur de Hénon (Chaotique)</option>
-                            <option value="rubik">Rubik's Cube (RGB Planes)</option>
+                            <option value="xor-shuffle" selected>🟢 Chaos Absolu (XOR & Permutation)</option>
+                            <option value="logistic-xor">🟢 Bruit Non-Linéaire (Logistique & Hénon)</option>
+                            <option value="cat-map">🟢 Torsion Fractale (Chat d'Arnold)</option>
+                            <option value="baker-map">🟢 Pétrissage Infini (Carte de Baker)</option>
+                            <option value="affine-map">🟡 Translation Affine Modulo</option>
+                            <option value="wave-shift">🟡 Ondes Géométriques (Sinusoïdal)</option>
+                            <option value="prime-scatter">🟡 Dispersion Modulaire (Premiers)</option>
+                            <option value="rgb-shift">🔴 Aberration Chromatique (RGB)</option>
+                            <option value="hilbert">🟢 Courbe de Hilbert (Space-Filling)</option>
+                            <option value="spiral">🟢 Scan Spiral (Centre→Bords)</option>
+                            <option value="zigzag">🟢 Zigzag Diagonal (Style JPEG)</option>
+                            <option value="chirikov">🟢 Carte de Chirikov (Standard Map)</option>
+                            <option value="henon">🟢 Attracteur de Hénon (Chaotique)</option>
+                            <option value="rubik">🟢 Rubik's Cube (RGB Planes)</option>
+                        </optgroup>
+                        <optgroup label="⭐ Résistants à la Compression (Réversibles après JPEG/WhatsApp)">
+                            <option value="block-shuffle-8">⭐ Bloc Shuffle 8×8 (aligné JPEG)</option>
+                            <option value="block-shuffle-16">⭐ Bloc Shuffle 16×16 (robuste WhatsApp)</option>
+                            <option value="dfws">🛡️ DualsFWShield (Ultra-Résistant Crop/Compression)</option>
                         </optgroup>
                         <optgroup label="⚠️ Destructifs (Perte de données irréversible)">
-                            <option value="quantize-shuffle">⚠️ Désintégration Pixélisée</option>
-                            <option value="color-crush">⚠️ Réduction de Palette Extrême</option>
-                            <option value="blur-noise">⚠️ Flou Corruptif & Bruit</option>
-                            <option value="salt-pepper">⚠️ Bruit Poivre et Sel</option>
+                            <option value="quantize-shuffle">🟢 ⚠️ Désintégration Pixélisée</option>
+                            <option value="color-crush">🟢 ⚠️ Réduction de Palette Extrême</option>
+                            <option value="blur-noise">🟡 ⚠️ Flou Corruptif & Bruit</option>
+                            <option value="salt-pepper">🟡 ⚠️ Bruit Poivre et Sel</option>
                         </optgroup>
                     </select>
+                    <div id="algo-compression-info" class="mt-2" style="font-size:0.75rem;color:var(--text-muted);display:none;"></div>
                     <div id="algo-warning" class="hidden disclaimer disclaimer-warn mt-2">⚠️ Cet algorithme est <strong>destructif</strong>. Les pixels originaux sont perdus définitivement. Activez "Cacher l'image d'origine" ci-dessous pour pouvoir récupérer l'original.</div>
                     <div id="algo-none-notice" class="hidden disclaimer mt-2" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:var(--primary);">🔒 <strong>Mode Stéganographie Pure</strong> — L'image ne sera pas altérée visuellement. Utilisez la section ci-dessous pour cacher un fichier (image, PDF, DOCX, ZIP...) à l'intérieur.</div>
                 </div>
@@ -119,6 +125,7 @@
                     <label style="color:var(--primary);">Stéganographie Lourde (Optionnel) <button class="help-btn" data-tooltip="Cache un FICHIER entier à l'intérieur du PNG produit (dans les métadonnées, compressé et chiffré).&#10;&#10;• Supporte : images, PDF, DOCX, XLSX, PPTX, ZIP, etc.&#10;• Taille max recommandée : ~50 Mo.&#10;&#10;Avec algo 'Aucun', l'image reste visuellement identique mais contient secrètement votre fichier.">?</button></label>
                     <label class="cb-label"><input type="checkbox" id="embed-original" checked> Cacher l'image d'origine</label>
                     <label class="cb-label" style="margin-top:8px;"><strong>OU</strong> cacher un fichier :<div style="margin-top:6px;"><input type="file" id="embed-other-file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.txt,.csv,.json,.mp3,.mp4,.mov,application/*"></div></label>
+                    <label class="cb-label" style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);padding-top:8px;"><input type="checkbox" id="stego-encrypt" checked> 🔒 Chiffrer le fichier caché <button class="help-btn" data-tooltip="Si coché, le fichier caché sera chiffré avec votre mot de passe (AES-256).&#10;&#10;Si décoché, le fichier est simplement compressé et caché publiquement (accessible sans mot de passe).">?</button></label>
                 </div>
 
                 <!-- Password + Strength -->
@@ -127,6 +134,7 @@
                     <input type="password" id="obfuscate-pwd" placeholder="Laisser vide = image publique">
                     <div id="pwd-strength" class="pwd-strength-bar"><div id="pwd-strength-fill" class="pwd-strength-fill"></div></div>
                     <div id="pwd-strength-text" class="pwd-strength-text"></div>
+                    <label class="cb-label" style="margin-top:12px;color:var(--accent);"><input type="checkbox" id="robust-mode"> 🧪 Mode Robustesse Maximale <button class="help-btn" data-tooltip="Utilise un 'sel déterministe' basé sur votre mot de passe au lieu d'un sel aléatoire.&#10;&#10;• AVANTAGE : Permet de restaurer l'image même si elle est recadrée (crop) ou compressée (JPEG/WhatsApp), car le sel n'a pas besoin d'être lu dans les métadonnées du fichier.&#10;&#10;• RECOMMANDÉ pour les partages sur réseaux sociaux.">?</button></label>
                 </div>
 
                 <!-- Invisible Watermark -->
@@ -209,6 +217,7 @@
                     <input type="password" id="revert-pwd" placeholder="Requis si chiffrée">
                 </div>
                 <button class="btn btn-primary w-full mt-2" id="btn-revert">Restaurer</button>
+                <button class="btn btn-secondary w-full mt-2" id="btn-brute-force" style="background:rgba(139,92,246,0.1);border-color:rgba(139,92,246,0.3);color:#a78bfa;">🚀 Scan Multi-Algorithmes (Brute Force)</button>
             </div>
             <div id="revert-result" class="hidden panel mt-4" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);">
                 <h3 style="margin-bottom:12px;color:var(--accent);">Restauration Mathématique 🧪</h3>
@@ -355,6 +364,7 @@
     <div id="toast-container"></div>
 
     <script src="share/lib/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="share/p2p.js"></script>
     <script src="share/audio.js"></script>
     <script src="share/features.js"></script>

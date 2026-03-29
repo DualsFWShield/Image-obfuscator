@@ -1,4 +1,4 @@
-const CACHE_NAME = 'obscurify-v5';
+const CACHE_NAME = 'obscurify-v9';
 const PRECACHE = [
     './',
     './index.html',

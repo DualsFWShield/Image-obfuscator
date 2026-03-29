@@ -313,6 +313,112 @@ function applySaltPepper(data, w, h, prng, rev) {
     return applyAffineMap(data, w, h, prng, rev);
 }
 
+// --- Block Shuffle (compression-resistant) ---
+function applyBlockShuffleWorker(data, width, height, prng, reverse, blockSize) {
+    const bw = Math.floor(width / blockSize);
+    const bh = Math.floor(height / blockSize);
+    const numBlocks = bw * bh;
+    if (numBlocks < 2) return data;
+    const perm = Array.from({length: numBlocks}, (_, i) => i);
+    const rands = [];
+    for (let i = numBlocks - 1; i > 0; i--) rands.push(Math.floor(prng() * (i + 1)));
+    for (let k = 0; k < rands.length; k++) {
+        const i = numBlocks - 1 - k;
+        [perm[i], perm[rands[k]]] = [perm[rands[k]], perm[i]];
+    }
+    const src = new Uint8Array(data);
+    const dst = new Uint8Array(src.length);
+    dst.set(src);
+    for (let bi = 0; bi < numBlocks; bi++) {
+        const srcIdx = reverse ? perm[bi] : bi;
+        const dstIdx = reverse ? bi : perm[bi];
+        const srcX = (srcIdx % bw) * blockSize;
+        const srcY = Math.floor(srcIdx / bw) * blockSize;
+        const dstX = (dstIdx % bw) * blockSize;
+        const dstY = Math.floor(dstIdx / bw) * blockSize;
+        for (let dy = 0; dy < blockSize; dy++) {
+            const srcRow = ((srcY + dy) * width + srcX) * 4;
+            const dstRow = ((dstY + dy) * width + dstX) * 4;
+            for (let dx = 0; dx < blockSize; dx++) {
+                const si = srcRow + dx * 4;
+                const di = dstRow + dx * 4;
+                dst[di] = src[si]; dst[di+1] = src[si+1];
+                dst[di+2] = src[si+2]; dst[di+3] = src[si+3];
+            }
+        }
+    }
+    return dst;
+}
+function applyBlockShuffle8(data, w, h, prng, rev) { return applyBlockShuffleWorker(data, w, h, prng, rev, 8); }
+function applyBlockShuffle16(data, w, h, prng, rev) { return applyBlockShuffleWorker(data, w, h, prng, rev, 16); }
+
+function applyDFWSWorker(data, w, h, prng, reverse) {
+    const BS = 8;
+    const bw = Math.floor(w / BS), bh = Math.floor(h / BS);
+    const numBlocks = bw * bh;
+    if (numBlocks < 2) return data;
+
+    const transforms = new Array(numBlocks);
+    for (let i = 0; i < numBlocks; i++) {
+        transforms[i] = {
+            chanRot: Math.floor(prng() * 3),
+            hFlip: prng() > 0.5,
+            vFlip: prng() > 0.5,
+            invert: prng() > 0.5
+        };
+    }
+    const perm = Array.from({length: numBlocks}, (_, i) => i);
+    for (let i = numBlocks - 1; i > 0; i--) {
+        const j = Math.floor(prng() * (i + 1));
+        [perm[i], perm[j]] = [perm[j], perm[i]];
+    }
+
+    const src = new Uint8Array(data);
+    const dst = new Uint8Array(src.length);
+    dst.set(src);
+
+    function transformBlock(srcBuf, dstBuf, sx, sy, dx, dy, tf, rev) {
+        for (let by = 0; by < BS; by++) {
+            for (let bx = 0; bx < BS; bx++) {
+                let rx = rev ? (tf.hFlip ? BS - 1 - bx : bx) : bx;
+                let ry = rev ? (tf.vFlip ? BS - 1 - by : by) : by;
+                let ox = !rev ? (tf.hFlip ? BS - 1 - bx : bx) : bx;
+                let oy = !rev ? (tf.vFlip ? BS - 1 - by : by) : by;
+                const si = ((sy + ry) * w + (sx + rx)) * 4;
+                const di = ((dy + oy) * w + (dx + ox)) * 4;
+                let r = srcBuf[si], g = srcBuf[si + 1], b = srcBuf[si + 2];
+                if (!rev) {
+                    if (tf.chanRot === 1) { const t = r; r = g; g = b; b = t; }
+                    else if (tf.chanRot === 2) { const t = r; r = b; b = g; g = t; }
+                    if (tf.invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+                } else {
+                    if (tf.invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+                    if (tf.chanRot === 1) { const t = b; b = g; g = r; r = t; }
+                    else if (tf.chanRot === 2) { const t = g; g = b; b = r; r = t; }
+                }
+                dstBuf[di] = r; dstBuf[di+1] = g; dstBuf[di+2] = b; dstBuf[di+3] = srcBuf[si+3];
+            }
+        }
+    }
+
+    if (!reverse) {
+        for (let i = 0; i < numBlocks; i++) {
+            const srcX = (i % bw) * BS, srcY = Math.floor(i / bw) * BS;
+            const dstIdx = perm[i];
+            const dstX = (dstIdx % bw) * BS, dstY = Math.floor(dstIdx / bw) * BS;
+            transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], false);
+        }
+    } else {
+        for (let i = 0; i < numBlocks; i++) {
+            const shuffledIdx = perm[i];
+            const srcX = (shuffledIdx % bw) * BS, srcY = Math.floor(shuffledIdx / bw) * BS;
+            const dstX = (i % bw) * BS, dstY = Math.floor(i / bw) * BS;
+            transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], true);
+        }
+    }
+    return dst;
+}
+
 const ALGOS = {
     'none': (data) => new Uint8Array(data), // stego-only: identity
     'xor-shuffle': applyXorShuffle, 'logistic-xor': applyLogisticXOR, 'cat-map': applyCatMap,
@@ -320,6 +426,8 @@ const ALGOS = {
     'prime-scatter': applyPrimeScatter, 'rgb-shift': applyRgbShift,
     'hilbert': applyHilbert, 'spiral': applySpiral, 'zigzag': applyZigzag,
     'chirikov': applyChirikov, 'henon': applyHenon, 'rubik': applyRubik,
+    'block-shuffle-8': applyBlockShuffle8, 'block-shuffle-16': applyBlockShuffle16,
+    'dfws': applyDFWSWorker,
     'quantize-shuffle': applyQuantizeShuffle, 'color-crush': applyColorCrush,
     'blur-noise': applyBlurNoise, 'salt-pepper': applySaltPepper
 };

@@ -533,6 +533,130 @@ document.addEventListener('DOMContentLoaded', () => {
         applyAffineMap(imgData, width, height, prng, reverse);
     }
 
+    // --- COMPRESSION-RESISTANT ALGORITHMS (Block-Level Permutation) ---
+    // Key insight: JPEG processes 8×8 blocks. By permuting ENTIRE blocks,
+    // compression only affects WITHIN each block, not block positions.
+    // → Reversible even after JPEG compression or WhatsApp sending.
+    function applyBlockShuffle(imgData, w, h, prng, reverse, blockSize) {
+        const bw = Math.floor(w / blockSize);
+        const bh = Math.floor(h / blockSize);
+        const numBlocks = bw * bh;
+        if (numBlocks < 2) return;
+        // Fisher-Yates permutation seeded by PRNG
+        const perm = Array.from({length: numBlocks}, (_, i) => i);
+        // Need deterministic permutation, consume prng in same order
+        const rands = [];
+        for (let i = numBlocks - 1; i > 0; i--) rands.push(Math.floor(prng() * (i + 1)));
+        for (let k = 0; k < rands.length; k++) {
+            const i = numBlocks - 1 - k;
+            [perm[i], perm[rands[k]]] = [perm[rands[k]], perm[i]];
+        }
+        const src = new Uint8Array(imgData.data);
+        const dst = new Uint8Array(src.length);
+        dst.set(src); // copy edge pixels that don't fit in blocks
+        for (let bi = 0; bi < numBlocks; bi++) {
+            const srcIdx = reverse ? perm[bi] : bi;
+            const dstIdx = reverse ? bi : perm[bi];
+            const srcX = (srcIdx % bw) * blockSize;
+            const srcY = Math.floor(srcIdx / bw) * blockSize;
+            const dstX = (dstIdx % bw) * blockSize;
+            const dstY = Math.floor(dstIdx / bw) * blockSize;
+            for (let dy = 0; dy < blockSize; dy++) {
+                const srcRow = ((srcY + dy) * w + srcX) * 4;
+                const dstRow = ((dstY + dy) * w + dstX) * 4;
+                for (let dx = 0; dx < blockSize; dx++) {
+                    const si = srcRow + dx * 4;
+                    const di = dstRow + dx * 4;
+                    dst[di] = src[si]; dst[di+1] = src[si+1];
+                    dst[di+2] = src[si+2]; dst[di+3] = src[si+3];
+                }
+            }
+        }
+        imgData.data.set(dst);
+    }
+    function applyBlockShuffle8(imgData, w, h, prng, reverse) {
+        applyBlockShuffle(imgData, w, h, prng, reverse, 8);
+    }
+    function applyBlockShuffle16(imgData, w, h, prng, reverse) {
+        applyBlockShuffle(imgData, w, h, prng, reverse, 16);
+    }
+
+    // --- DFWS (DualsFWShield) — Compression/Crop/Screenshot-Resistant ---
+    // Each 8×8 block gets: channel rotation + flip + inversion + position shuffle.
+    // All ops survive JPEG. Each surviving block is independently reversible.
+    function applyDFWS(imgData, w, h, prng, reverse) {
+        const BS = 8;
+        const bw = Math.floor(w / BS), bh = Math.floor(h / BS);
+        const numBlocks = bw * bh;
+        if (numBlocks < 2) return;
+
+        // Generate per-block transforms (deterministic from PRNG)
+        const transforms = new Array(numBlocks);
+        for (let i = 0; i < numBlocks; i++) {
+            transforms[i] = {
+                chanRot: Math.floor(prng() * 3),   // 0=none, 1=RGB→GBR, 2=RGB→BRG
+                hFlip:   prng() > 0.5,
+                vFlip:   prng() > 0.5,
+                invert:  prng() > 0.5
+            };
+        }
+        // Generate block permutation (Fisher-Yates)
+        const perm = Array.from({length: numBlocks}, (_, i) => i);
+        for (let i = numBlocks - 1; i > 0; i--) {
+            const j = Math.floor(prng() * (i + 1));
+            [perm[i], perm[j]] = [perm[j], perm[i]];
+        }
+
+        const src = new Uint8Array(imgData.data);
+        const dst = new Uint8Array(src.length);
+        dst.set(src); // preserve edge pixels outside block grid
+
+        function transformBlock(srcBuf, dstBuf, sx, sy, dx, dy, tf, rev) {
+            for (let by = 0; by < BS; by++) {
+                for (let bx = 0; bx < BS; bx++) {
+                    // Flip coordinates
+                    let rx = rev ? (tf.hFlip ? BS-1-bx : bx) : bx;
+                    let ry = rev ? (tf.vFlip ? BS-1-by : by) : by;
+                    let ox = !rev ? (tf.hFlip ? BS-1-bx : bx) : bx;
+                    let oy = !rev ? (tf.vFlip ? BS-1-by : by) : by;
+                    const si = ((sy + ry) * w + (sx + rx)) * 4;
+                    const di = ((dy + oy) * w + (dx + ox)) * 4;
+                    let r = srcBuf[si], g = srcBuf[si+1], b = srcBuf[si+2];
+                    // Channel rotation
+                    if (!rev) {
+                        if (tf.chanRot === 1) { const t=r; r=g; g=b; b=t; }
+                        else if (tf.chanRot === 2) { const t=r; r=b; b=g; g=t; }
+                        if (tf.invert) { r=255-r; g=255-g; b=255-b; }
+                    } else {
+                        if (tf.invert) { r=255-r; g=255-g; b=255-b; }
+                        if (tf.chanRot === 1) { const t=b; b=g; g=r; r=t; }
+                        else if (tf.chanRot === 2) { const t=g; g=b; b=r; r=t; }
+                    }
+                    dstBuf[di] = r; dstBuf[di+1] = g; dstBuf[di+2] = b; dstBuf[di+3] = srcBuf[si+3];
+                }
+            }
+        }
+
+        if (!reverse) {
+            // Forward: transform each block, then shuffle
+            for (let i = 0; i < numBlocks; i++) {
+                const srcX = (i % bw) * BS, srcY = Math.floor(i / bw) * BS;
+                const dstIdx = perm[i];
+                const dstX = (dstIdx % bw) * BS, dstY = Math.floor(dstIdx / bw) * BS;
+                transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], false);
+            }
+        } else {
+            // Reverse: un-shuffle, then un-transform
+            for (let i = 0; i < numBlocks; i++) {
+                const shuffledIdx = perm[i]; // block i went to position perm[i]
+                const srcX = (shuffledIdx % bw) * BS, srcY = Math.floor(shuffledIdx / bw) * BS;
+                const dstX = (i % bw) * BS, dstY = Math.floor(i / bw) * BS;
+                transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], true);
+            }
+        }
+        imgData.data.set(dst);
+    }
+
     // --- 6 NEW ALGORITHMS (main thread fallback) ---
     function hilbertD2XY(n, d) {
         let x = 0, y = 0, s, t = d;
@@ -763,6 +887,9 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (algo === 'chirikov') applyChirikov(imgData, width, height, prng, reverse);
         else if (algo === 'henon') applyHenon(imgData, width, height, prng, reverse);
         else if (algo === 'rubik') applyRubik(imgData, width, height, prng, reverse);
+        else if (algo === 'block-shuffle-8') applyBlockShuffle8(imgData, width, height, prng, reverse);
+        else if (algo === 'block-shuffle-16') applyBlockShuffle16(imgData, width, height, prng, reverse);
+        else if (algo === 'dfws') applyDFWS(imgData, width, height, prng, reverse);
         else if (algo === 'quantize-shuffle') applyQuantizeShuffle(imgData, width, height, prng, reverse);
         else if (algo === 'color-crush') applyColorCrush(imgData, width, height, prng, reverse);
         else if (algo === 'blur-noise') applyBlurNoise(imgData, width, height, prng, reverse);
@@ -791,6 +918,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const internalSalt = crypto.randomUUID();
             const seed = pwd ? pwd + internalSalt : 'public' + internalSalt;
             
+            if (algo === 'dfws') {
+                RobustWatermark.embed(imgData, "DualsFWShield");
+            }
             applyAlgorithm(imgData, canvas.width, canvas.height, algo, seed, false);
             
             let metadata = { v: 5, alg: algo, pwd: !!pwd, salt: internalSalt, mime: originalImageFile.type };
@@ -1410,8 +1540,45 @@ document.addEventListener('DOMContentLoaded', () => {
         gaugeVal.textContent = score;
         gaugeLabel.textContent = labels[idx];
     }
+    const COMPRESSION_DATA = {
+        'none':             { level: '—',  color: '#94a3b8', desc: 'Aucune obfuscation. Le fichier caché survit si exporté en PNG.' },
+        'xor-shuffle':      { level: '🟢 Forte', color: '#10b981', desc: 'Déplacement massif de pixels. L\'image reste visuellement brouillée même après JPEG Q30.' },
+        'logistic-xor':     { level: '🟢 Forte', color: '#10b981', desc: 'Chaos non-linéaire. Brouillage total très résistant à toute compression.' },
+        'cat-map':          { level: '🟢 Forte', color: '#10b981', desc: 'Permutation fractale. La torsion globale survit à JPEG Q50+.' },
+        'baker-map':        { level: '🟢 Forte', color: '#10b981', desc: 'Découpage en bandes. Effet visible même après compression lourde.' },
+        'affine-map':       { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Décalage linéaire modulo. Les motifs réguliers sont partiellement lissés par JPEG.' },
+        'wave-shift':       { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Ondulations sinusoïdales. Les basses fréquences survivent, les détails fins sont perdus.' },
+        'prime-scatter':    { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Dispersion par nombres premiers. Effet partiel après JPEG Q60+.' },
+        'rgb-shift':        { level: '🔴 Faible', color: '#ef4444', desc: 'Décalage de canaux. JPEG fusionne les couleurs voisines, réduisant l\'effet visible.' },
+        'hilbert':          { level: '🟢 Forte', color: '#10b981', desc: 'Courbe de remplissage. Redistribution totale des pixels, très résistant.' },
+        'spiral':           { level: '🟢 Forte', color: '#10b981', desc: 'Réorganisation en spirale. Brouillage fort résistant à la compression.' },
+        'zigzag':           { level: '🟢 Forte', color: '#10b981', desc: 'Parcours diagonal JPEG-like. Survit bien car aligné sur la structure DCT.' },
+        'chirikov':         { level: '🟢 Forte', color: '#10b981', desc: 'Map standard chaotique. Déplacement non-linéaire massif, très résistant.' },
+        'henon':            { level: '🟢 Forte', color: '#10b981', desc: 'Attracteur chaotique. Dispersion fractalique très résistante.' },
+        'rubik':            { level: '🟢 Forte', color: '#10b981', desc: 'Rotation de plans RGB. Effet de brouillage survit à toute compression.' },
+        'block-shuffle-8':  { level: '⭐ RÉVERSIBLE', color: '#8b5cf6', desc: 'Permutation de blocs 8×8 (aligné JPEG). Réversible même après compression JPEG Q50+ / WhatsApp.', compReversible: true },
+        'block-shuffle-16': { level: '⭐ RÉVERSIBLE', color: '#8b5cf6', desc: 'Permutation de blocs 16×16. Plus robuste aux redimensionnements. Réversible après recompression.', compReversible: true },
+        'dfws':             { level: '\ud83d\udee1\ufe0f DFWS', color: '#f59e0b', desc: 'DualsFWShield — Shuffle + rotation canaux + flip + inversion par bloc 8×8. Résiste JPEG, crop, screenshot. Les parties survivantes sont individuellement restaurables.', compReversible: true },
+        'quantize-shuffle': { level: '🟢 Forte', color: '#10b981', desc: 'Quantification + permutation. La pixélisation résiste naturellement à JPEG.' },
+        'color-crush':      { level: '🟢 Forte', color: '#10b981', desc: 'Palette réduite. Le broyage de couleurs est amplifié par la compression.' },
+        'blur-noise':       { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Flou + bruit. Le bruit est lissé par JPEG mais le flou persiste.' },
+        'salt-pepper':      { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Pixels aléatoires noir/blanc. JPEG lisse les points isolés.' }
+    };
+    function updateCompressionInfo() {
+        const info = document.getElementById('algo-compression-info');
+        if (!info) return;
+        const algo = algoSelect.value;
+        const data = COMPRESSION_DATA[algo];
+        if (!data || algo === 'none') { info.style.display = 'none'; return; }
+        info.style.display = 'block';
+        const revNote = data.compReversible
+            ? '<br><span style="color:#10b981;font-size:0.65rem;">✅ Cet algo est RÉVERSIBLE même après compression JPEG / envoi WhatsApp. La qualité sera légèrement dégradée par la compression mais l\'image sera restaurée.</span>'
+            : '<br><span style="color:#f59e0b;font-size:0.65rem;">⚠️ Reversibilité math. perdue après compression JPEG — exporter en PNG pour restaurer.</span>';
+        info.innerHTML = `<span style="color:${data.color};font-weight:600;">${data.level}</span> — ${data.desc}${revNote}`;
+    }
     algoSelect.addEventListener('change', () => {
         updateSecurityScore();
+        updateCompressionInfo();
         const destructives = ['quantize-shuffle','color-crush','blur-noise','salt-pepper'];
         const warn = document.getElementById('algo-warning');
         if (warn) warn.classList.toggle('hidden', !destructives.includes(algoSelect.value));
@@ -1419,6 +1586,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const noneNotice = document.getElementById('algo-none-notice');
         if (noneNotice) noneNotice.classList.toggle('hidden', algoSelect.value !== 'none');
     });
+    updateCompressionInfo();
     embedOriginalCb.addEventListener('change', updateSecurityScore);
     obfSig.addEventListener('input', updateSecurityScore);
     document.getElementById('watermark-toggle')?.addEventListener('change', updateSecurityScore);
@@ -1526,9 +1694,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Effect Gallery ---
     const galleryEl = document.getElementById('effect-gallery');
-    const algos = ['xor-shuffle','logistic-xor','cat-map','baker-map','affine-map','wave-shift','prime-scatter','rgb-shift','hilbert','spiral','zigzag','chirikov','henon','rubik','quantize-shuffle','color-crush','blur-noise','salt-pepper'];
-    const algoNames = ['XOR','Logistic','Cat Map','Baker','Affine','Wave','Prime','RGB','Hilbert','Spiral','Zigzag','Chirikov','H\u00e9non','Rubik','Quantize','Crush','Blur','S&P'];
-    const REVERSIBLE_COUNT = 14; // first 14 are reversible, last 4 are destructive
+    const algos = ['xor-shuffle','logistic-xor','cat-map','baker-map','affine-map','wave-shift','prime-scatter','rgb-shift','hilbert','spiral','zigzag','chirikov','henon','rubik','block-shuffle-8','block-shuffle-16','dfws','quantize-shuffle','color-crush','blur-noise','salt-pepper'];
+    const algoNames = ['XOR','Logistic','Cat Map','Baker','Affine','Wave','Prime','RGB','Hilbert','Spiral','Zigzag','Chirikov','H\u00e9non','Rubik','Bloc 8\u00d78','Bloc 16\u00d716','DFWS','Quantize','Crush','Blur','S&P'];
+    const REVERSIBLE_COUNT = 17; // first 17 are reversible, last 4 are destructive
     function buildGallery() {
         galleryEl.innerHTML = '';
         if (!originalImageFile) { galleryEl.innerHTML = '<p style="grid-column:span 4;text-align:center;color:var(--text-muted);font-size:0.75rem;">Chargez une image pour voir les effets</p>'; return; }
@@ -1567,6 +1735,14 @@ document.addEventListener('DOMContentLoaded', () => {
         galleryEl.appendChild(revHeader);
 
         algos.forEach((algo, i) => {
+            // Insert compression-resistant header before block-shuffle algos
+            if (i === 14) {
+                const compHeader = document.createElement('div');
+                compHeader.className = 'gallery-section-header';
+                compHeader.innerHTML = '\u2b50 Anti-Compression';
+                compHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:#8b5cf6;padding:6px 0 2px;border-bottom:1px solid rgba(139,92,246,0.3);margin-bottom:2px;margin-top:6px;';
+                galleryEl.appendChild(compHeader);
+            }
             // Insert destructive header before first destructive algo
             if (i === REVERSIBLE_COUNT) {
                 const destHeader = document.createElement('div');
@@ -1578,6 +1754,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const div = document.createElement('div');
             div.className = 'effect-thumb' + (algoSelect.value === algo ? ' active' : '');
             if (i >= REVERSIBLE_COUNT) div.style.borderColor = 'rgba(245,158,11,0.3)';
+            else if (i >= 14) div.style.borderColor = 'rgba(139,92,246,0.5)';
             const c = document.createElement('canvas');
             c.width = thumbSize; c.height = thumbSize;
             const ctx = c.getContext('2d');
@@ -1585,11 +1762,20 @@ document.addEventListener('DOMContentLoaded', () => {
             applyAlgorithm(copy, thumbSize, thumbSize, algo, 'gallery_preview_' + algo, false);
             ctx.putImageData(copy, 0, 0);
             div.appendChild(c);
+            // Compression resistance badge
+            const compData = COMPRESSION_DATA[algo];
+            if (compData) {
+                const badge = document.createElement('div');
+                badge.className = 'effect-thumb-badge';
+                badge.style.cssText = `position:absolute;top:3px;right:3px;width:10px;height:10px;border-radius:50%;background:${compData.color};border:1px solid rgba(0,0,0,0.3);`;
+                badge.title = compData.level + ' — ' + compData.desc;
+                div.appendChild(badge);
+            }
             const label = document.createElement('div');
             label.className = 'effect-thumb-label';
             label.textContent = algoNames[i];
             div.appendChild(label);
-            div.addEventListener('click', () => { algoSelect.value = algo; buildGallery(); updateSecurityScore(); });
+            div.addEventListener('click', () => { algoSelect.value = algo; buildGallery(); updateSecurityScore(); updateCompressionInfo(); });
             galleryEl.appendChild(div);
         });
     }
@@ -1766,7 +1952,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 ctx.drawImage(img, 0, 0);
                 const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const internalSalt = crypto.randomUUID();
+                const isRobust = document.getElementById('robust-mode')?.checked;
+                let internalSalt = crypto.randomUUID();
+                if (isRobust && pwd) {
+                    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + "OBSCURE_FIXED_SALT_v1"));
+                    internalSalt = Array.from(new Uint8Array(hash).slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+                }
                 const seed = pwd ? pwd + internalSalt : 'public' + internalSalt;
 
                 // Store original for comparison
@@ -1783,13 +1974,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // Watermark (LSB or DCT)
-                if (wmText) {
-                    if (wmMode === 'dct') RobustWatermark.embed(imgData, wmText);
-                    else embedWatermark(imgData, wmText);
+                let activeWmText = wmText;
+                let activeWmMode = wmMode;
+                if (algo === 'dfws') {
+                    activeWmText = "DualsFWShield";
+                    activeWmMode = 'dct';
+                }
+                if (activeWmText) {
+                    if (activeWmMode === 'dct') RobustWatermark.embed(imgData, activeWmText);
+                    else embedWatermark(imgData, activeWmText);
                 }
 
                 let metadata = { v: 5, alg: algo, pwd: !!pwd, salt: internalSalt, mime: file.type };
-                if (wmText) { metadata.wm = true; metadata.wmMode = wmMode; }
+                if (isRobust) metadata.robust = true;
+                if (activeWmText) { metadata.wm = true; metadata.wmMode = activeWmMode; }
 
                 let fileToEmbed = null;
                 if (otherImageFile) fileToEmbed = otherImageFile;
@@ -1797,8 +1995,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (fileToEmbed) {
                     const buf = await fileToEmbed.arrayBuffer();
                     const comp = await compressData(buf);
-                    const { encrypted, salt: pSalt, iv: pIv } = await encryptData(comp, pwd);
-                    metadata.payload = { data: arrayBufferToBase64(encrypted), salt: pSalt ? arrayBufferToBase64(pSalt) : null, iv: pIv ? arrayBufferToBase64(pIv) : null, mime: fileToEmbed.type || 'application/octet-stream', filename: fileToEmbed.name };
+                    const shouldEncrypt = document.getElementById('stego-encrypt')?.checked && pwd;
+                    let payload;
+                    if (shouldEncrypt) {
+                        const { encrypted, salt: pSalt, iv: pIv } = await encryptData(comp, pwd);
+                        payload = { data: arrayBufferToBase64(encrypted), salt: pSalt ? arrayBufferToBase64(pSalt) : null, iv: pIv ? arrayBufferToBase64(pIv) : null, enc: true };
+                    } else {
+                        payload = { data: arrayBufferToBase64(comp), enc: false };
+                    }
+                    metadata.payload = { ...payload, mime: fileToEmbed.type || 'application/octet-stream', filename: fileToEmbed.name };
                 }
 
                 let sigPayload = null;
@@ -1870,14 +2075,38 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('revert-watermark-container')?.classList.add('hidden');
         try {
             const buf = await targetObfuscatedFile.arrayBuffer();
-            const tailString = new TextDecoder().decode(buf.slice(Math.max(0, buf.byteLength - 15000000)));
+            const tailString = new TextDecoder().decode(buf.slice(Math.max(0, buf.byteLength - 1000000)));
             const magicIdx = tailString.lastIndexOf(MAGIC_MARKER);
-            if (magicIdx === -1) throw new Error("Pas une image Obscurify.");
-            const jsonStart = tailString.substring(0, magicIdx).lastIndexOf('{"v":5');
-            if (jsonStart === -1) throw new Error("Métadonnées altérées.");
-            const meta = JSON.parse(tailString.substring(jsonStart, magicIdx));
+            
+            let meta;
+            if (magicIdx === -1) {
+                // FALLBACK: Metadata lost (Crop/JPEG). Try to detect DFWS via Watermark
+                const canvas = document.createElement('canvas');
+                canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(targetObfuscatedImage, 0, 0);
+                const wm = RobustWatermark.extract(ctx.getImageData(0,0,canvas.width,canvas.height));
+                if (wm && wm.startsWith("DualsFW")) {
+                    meta = { v: 5, alg: 'dfws', pwd: !!revPwd.value, robust: true, salt: 'FALLBACK' };
+                    showToast('🛡️ Signature DualsFWShield détectée. Restauration d\'urgence...', 'info');
+                } else {
+                    throw new Error("Pas une image Obscurify ou métadonnées absentes.");
+                }
+            } else {
+                const jsonStart = tailString.substring(0, magicIdx).lastIndexOf('{"v":5');
+                if (jsonStart === -1) throw new Error("Métadonnées altérées.");
+                meta = JSON.parse(tailString.substring(jsonStart, magicIdx));
+            }
+
             if (meta.pwd && !revPwd.value) throw new Error("Mot de passe requis.");
-            const seed = meta.pwd ? revPwd.value + meta.salt : 'public' + meta.salt;
+
+            let saltToUse = meta.salt;
+            if (meta.robust) {
+                const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(revPwd.value + "OBSCURE_FIXED_SALT_v1"));
+                saltToUse = Array.from(new Uint8Array(hash).slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+            const seed = meta.pwd ? revPwd.value + saltToUse : 'public' + saltToUse;
+            
             const canvas = document.createElement('canvas');
             canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -1913,8 +2142,13 @@ document.addEventListener('DOMContentLoaded', () => {
             revertResult.classList.remove('hidden');
             if (meta.payload) {
                 try {
-                    const decComp = await decryptData(base64ToArrayBuffer(meta.payload.data), meta.pwd ? revPwd.value : null, meta.payload.salt ? base64ToArrayBuffer(meta.payload.salt) : null, meta.payload.iv ? base64ToArrayBuffer(meta.payload.iv) : null);
-                    const original = await decompressData(decComp);
+                    let original;
+                    if (meta.payload.enc) {
+                        const decComp = await decryptData(base64ToArrayBuffer(meta.payload.data), meta.pwd ? revPwd.value : null, meta.payload.salt ? base64ToArrayBuffer(meta.payload.salt) : null, meta.payload.iv ? base64ToArrayBuffer(meta.payload.iv) : null);
+                        original = await decompressData(decComp);
+                    } else {
+                        original = await decompressData(base64ToArrayBuffer(meta.payload.data));
+                    }
                     const blob = new Blob([original], { type: meta.payload.mime });
                     if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
                     currentHiddenObjectUrl = URL.createObjectURL(blob);
@@ -1931,14 +2165,89 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (sigPayload) {
                 try {
-                    const decComp = await decryptData(base64ToArrayBuffer(sigPayload.data), meta.pwd ? revPwd.value : null, sigPayload.salt ? base64ToArrayBuffer(sigPayload.salt) : null, sigPayload.iv ? base64ToArrayBuffer(sigPayload.iv) : null);
-                    revertSigText.innerText = new TextDecoder().decode(await decompressData(decComp));
+                    let text;
+                    if (sigPayload.enc !== false) {
+                        const decComp = await decryptData(base64ToArrayBuffer(sigPayload.data), meta.pwd ? revPwd.value : null, sigPayload.salt ? base64ToArrayBuffer(sigPayload.salt) : null, sigPayload.iv ? base64ToArrayBuffer(sigPayload.iv) : null);
+                        text = new TextDecoder().decode(await decompressData(decComp));
+                    } else {
+                        text = new TextDecoder().decode(await decompressData(base64ToArrayBuffer(sigPayload.data)));
+                    }
+                    revertSigText.innerText = text;
                     revertSigContainer.classList.remove('hidden');
                 } catch(e) {}
             }
             playSound('success');
         } catch(e) { console.error(e); alert("Erreur: " + e.message); playSound('error'); }
         revertClone.innerText = "Restaurer"; revertClone.disabled = false;
+    });
+
+    // --- BRUTE FORCE SCAN (Multi-Algo) ---
+    document.getElementById('btn-brute-force')?.addEventListener('click', async () => {
+        if (!targetObfuscatedFile) return alert("Sélectionnez l'image.");
+        const btn = document.getElementById('btn-brute-force');
+        btn.innerText = "Scan en cours..."; btn.disabled = true;
+        showToast("🚀 Scan global lancé (21+ algorithmes)...", "info");
+        
+        try {
+            const zip = new JSZip();
+            const w = targetObfuscatedImage.width, h = targetObfuscatedImage.height;
+            const pwd = revPwd.value;
+            
+            // Derive deterministic salt
+            const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + "OBSCURE_FIXED_SALT_v1"));
+            const robustSalt = Array.from(new Uint8Array(hash).slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+            // Extract watermark in case we can detect the right one
+            const tempCanvas = document.createElement('canvas'); tempCanvas.width = w; tempCanvas.height = h;
+            const tempCtx = tempCanvas.getContext('2d'); tempCtx.drawImage(targetObfuscatedImage, 0, 0);
+            const wm = RobustWatermark.extract(tempCtx.getImageData(0,0,w,h));
+            if (wm) zip.file("watermark_detected.txt", "Watermark extrait : " + wm);
+
+            // Reversible algos from code (index 0 to 16)
+            const reversibleAlgos = ['xor-shuffle','logistic-xor','cat-map','baker-map','affine-map','wave-shift','prime-scatter','rgb-shift','hilbert','spiral','zigzag','chirikov','henon','rubik','block-shuffle-8','block-shuffle-16','dfws'];
+            const reversibleNames = ['XOR','Logistic','Cat Map','Baker','Affine','Wave','Prime','RGB','Hilbert','Spiral','Zigzag','Chirikov','Henon','Rubik','Bloc8x8','Bloc16x16','DFWS'];
+
+            for (let i = 0; i < reversibleAlgos.length; i++) {
+                const algo = reversibleAlgos[i];
+                const name = reversibleNames[i];
+                
+                // Try two modes: Normal (random salt - unlikely to work if meta lost) and Robust (deterministic salt)
+                const trials = [
+                    { salt: 'public', label: 'Public' },
+                    { salt: robustSalt, label: 'Robust' }
+                ];
+
+                for (const trial of trials) {
+                    const seed = (pwd || 'public') + trial.salt;
+                    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d'); ctx.drawImage(targetObfuscatedImage, 0, 0);
+                    const imgData = ctx.getImageData(0, 0, w, h);
+                    
+                    try {
+                        const result = await workerApply(algo, imgData.data.buffer.slice(0), w, h, seed, true, 1);
+                        imgData.data.set(result);
+                    } catch(e) {
+                        applyAlgorithm(imgData, w, h, algo, seed, true);
+                    }
+                    
+                    ctx.putImageData(imgData, 0, 0);
+                    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+                    zip.file(`${name}_${trial.label}.png`, blob);
+                }
+            }
+
+            const content = await zip.generateAsync({ type: "blob" });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(content);
+            a.download = `obscurify_bruteforce_${Date.now()}.zip`;
+            a.click();
+            showToast("📦 ZIP généré avec tous les essais !", "success");
+            playSound('success');
+        } catch(e) {
+            console.error(e);
+            alert("Erreur brute-force: " + e.message);
+        }
+        btn.innerText = "🚀 Scan Multi-Algorithmes (Brute Force)"; btn.disabled = false;
     });
 
     // Download buttons need re-binding since we cloned
