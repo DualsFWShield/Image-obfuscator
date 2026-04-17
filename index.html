@@ -92,7 +92,7 @@
                         <optgroup label="⭐ Résistants à la Compression (Réversibles après JPEG/WhatsApp)">
                             <option value="block-shuffle-8">⭐ Bloc Shuffle 8×8 (aligné JPEG)</option>
                             <option value="block-shuffle-16">⭐ Bloc Shuffle 16×16 (robuste WhatsApp)</option>
-                            <option value="dfws">🛡️ DualsFWShield (Ultra-Résistant Crop/Compression)</option>
+                            <option value="dfws">🛡️ DualsFWShield (Stégo Pixel — Résiste JPEG/Crop)</option>
                         </optgroup>
                         <optgroup label="⚠️ Destructifs (Perte de données irréversible)">
                             <option value="quantize-shuffle">🟢 ⚠️ Désintégration Pixélisée</option>
@@ -124,6 +124,7 @@
                 <div class="control-group" style="background:rgba(0,0,0,0.25);padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.05);">
                     <label style="color:var(--primary);">Stéganographie Lourde (Optionnel) <button class="help-btn" data-tooltip="Cache un FICHIER entier à l'intérieur du PNG produit (dans les métadonnées, compressé et chiffré).&#10;&#10;• Supporte : images, PDF, DOCX, XLSX, PPTX, ZIP, etc.&#10;• Taille max recommandée : ~50 Mo.&#10;&#10;Avec algo 'Aucun', l'image reste visuellement identique mais contient secrètement votre fichier.">?</button></label>
                     <label class="cb-label"><input type="checkbox" id="embed-original" checked> Cacher l'image d'origine</label>
+                    <label class="cb-label" style="margin-top:6px;color:var(--accent);"><input type="checkbox" id="dct-pixel-toggle" checked> 🛡️ Stégo Pixel (résiste JPEG/WhatsApp/Screenshot) <button class="help-btn" data-tooltip="Cache une miniature de l'image originale DIRECTEMENT dans les pixels via DCT.&#10;&#10;• Survit à la compression JPEG, envoi WhatsApp, screenshot&#10;• Image extraite en basse résolution (~64×64 à ~128×128)&#10;• Fonctionne avec TOUS les algorithmes&#10;&#10;L'image en pleine résolution reste dans les métadonnées (PNG uniquement).">?</button></label>
                     <label class="cb-label" style="margin-top:8px;"><strong>OU</strong> cacher un fichier :<div style="margin-top:6px;"><input type="file" id="embed-other-file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.txt,.csv,.json,.mp3,.mp4,.mov,application/*"></div></label>
                     <label class="cb-label" style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);padding-top:8px;"><input type="checkbox" id="stego-encrypt" checked> 🔒 Chiffrer le fichier caché <button class="help-btn" data-tooltip="Si coché, le fichier caché sera chiffré avec votre mot de passe (AES-256).&#10;&#10;Si décoché, le fichier est simplement compressé et caché publiquement (accessible sans mot de passe).">?</button></label>
                 </div>

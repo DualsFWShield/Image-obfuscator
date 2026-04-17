@@ -396,13 +396,16 @@ function applyDFWSWorker(data, w, h, prng, reverse) {
                 const si = ((sy + by) * w + (sx + bx)) * 4;
                 // If it's an anchor, we could draw a pattern, but for now we just keep it fixed
                 // to act as a reference for the normalization logic.
-                if (isAnchor && !rev) {
-                    // Draw a checkerboard pattern in anchors to resist compression
-                    const pattern = ((Math.floor(bx/4) + Math.floor(by/4)) % 2 === 0) ? 255 : 0;
-                    dstBuf[((dy + by) * w + (dx + bx)) * 4] = pattern;
-                    dstBuf[((dy + by) * w + (dx + bx)) * 4 + 1] = pattern;
-                    dstBuf[((dy + by) * w + (dx + bx)) * 4 + 2] = pattern;
-                    dstBuf[((dy + by) * w + (dx + bx)) * 4 + 3] = 255;
+                if (isAnchor) {
+                    const di = ((dy + by) * w + (dx + bx)) * 4;
+                    if (!rev) {
+                        // Draw a checkerboard pattern in anchors to resist compression
+                        const pattern = ((Math.floor(bx/4) + Math.floor(by/4)) % 2 === 0) ? 255 : 0;
+                        dstBuf[di] = pattern; dstBuf[di+1] = pattern; dstBuf[di+2] = pattern; dstBuf[di+3] = 255;
+                    } else {
+                        // Reverse: copy as-is (original data was replaced by checkerboard)
+                        dstBuf[di] = srcBuf[si]; dstBuf[di+1] = srcBuf[si+1]; dstBuf[di+2] = srcBuf[si+2]; dstBuf[di+3] = srcBuf[si+3];
+                    }
                     continue;
                 }
 
@@ -453,8 +456,249 @@ function applyDFWSWorker(data, w, h, prng, reverse) {
             transformBlock(src, dst, sx, sy, dx, dy, transforms[dstIdx], true, false);
         }
     }
+
+    // --- Handle edge pixels not covered by 16×16 grid ---
+    const coveredW = bw * BS, coveredH = bh * BS;
+    // Right strip
+    for (let y = 0; y < h; y++) {
+        for (let x = coveredW; x < w; x++) {
+            const i = (y * w + x) * 4;
+            dst[i]   = src[i]   ^ (prng() * 255 | 0);
+            dst[i+1] = src[i+1] ^ (prng() * 255 | 0);
+            dst[i+2] = src[i+2] ^ (prng() * 255 | 0);
+            dst[i+3] = src[i+3];
+        }
+    }
+    // Bottom strip (excl. right corner already done)
+    for (let y = coveredH; y < h; y++) {
+        for (let x = 0; x < coveredW; x++) {
+            const i = (y * w + x) * 4;
+            dst[i]   = src[i]   ^ (prng() * 255 | 0);
+            dst[i+1] = src[i+1] ^ (prng() * 255 | 0);
+            dst[i+2] = src[i+2] ^ (prng() * 255 | 0);
+            dst[i+3] = src[i+3];
+        }
+    }
+
     return dst;
 }
+
+// --- DCT Steganography (Pixel-Level, Compression-Resistant) ---
+function stegoDct8(block) {
+    const N = 8, out = new Float64Array(N);
+    for (let k = 0; k < N; k++) {
+        let sum = 0;
+        for (let n = 0; n < N; n++) sum += block[n] * Math.cos(Math.PI * (2*n+1) * k / (2*N));
+        out[k] = sum * (k === 0 ? Math.sqrt(1/N) : Math.sqrt(2/N));
+    }
+    return out;
+}
+function stegoIdct8(coef) {
+    const N = 8, out = new Float64Array(N);
+    for (let n = 0; n < N; n++) {
+        let sum = 0;
+        for (let k = 0; k < N; k++) sum += coef[k] * Math.cos(Math.PI * (2*n+1) * k / (2*N)) * (k === 0 ? Math.sqrt(1/N) : Math.sqrt(2/N));
+        out[n] = sum;
+    }
+    return out;
+}
+function stegoDct2d(block) {
+    const tmp = new Float64Array(64);
+    for (let r = 0; r < 8; r++) { const row = stegoDct8(block.subarray(r*8, r*8+8)); for (let c = 0; c < 8; c++) tmp[r*8+c] = row[c]; }
+    for (let c = 0; c < 8; c++) { const col = new Float64Array(8); for (let r = 0; r < 8; r++) col[r] = tmp[r*8+c]; const res = stegoDct8(col); for (let r = 0; r < 8; r++) tmp[r*8+c] = res[r]; }
+    return tmp;
+}
+function stegoIdct2d(coef) {
+    const tmp = new Float64Array(64);
+    for (let c = 0; c < 8; c++) { const col = new Float64Array(8); for (let r = 0; r < 8; r++) col[r] = coef[r*8+c]; const res = stegoIdct8(col); for (let r = 0; r < 8; r++) tmp[r*8+c] = res[r]; }
+    for (let r = 0; r < 8; r++) { const row = stegoIdct8(tmp.subarray(r*8, r*8+8)); for (let c = 0; c < 8; c++) tmp[r*8+c] = row[c]; }
+    return tmp;
+}
+
+const DCT_STEGO = {
+    // 6 mid-frequency DCT coefficient positions per 8x8 block
+    MID_FREQ: [[1,2],[2,1],[2,3],[3,2],[3,3],[4,4]],
+    QUANT_STEP: 60,
+    MAGIC: 0xDF,
+
+    rgbToY(r, g, b) { return 0.299 * r + 0.587 * g + 0.114 * b; },
+
+    /**
+     * Embed a secret image into the host image pixels via DCT QIM.
+     * hostPixels: Uint8Array (RGBA), modified IN PLACE
+     * secretPixels: Uint8Array (RGBA), read only
+     */
+    embed(hostPixels, hostW, hostH, secretPixels, secretW, secretH) {
+        // --- Build bit stream ---
+        const bits = [];
+        // Header: magic(8) + width(8) + height(8) + checksum(8) = 32 bits
+        const checksum = (secretW * secretH + 0x5A) & 0xFF;
+        for (let i = 0; i < 8; i++) bits.push((this.MAGIC >> i) & 1);
+        for (let i = 0; i < 8; i++) bits.push((secretW >> i) & 1);
+        for (let i = 0; i < 8; i++) bits.push((secretH >> i) & 1);
+        for (let i = 0; i < 8; i++) bits.push((checksum >> i) & 1);
+        // Pixel data: 4 bits per channel (R,G,B)
+        for (let p = 0; p < secretW * secretH; p++) {
+            const r4 = secretPixels[p * 4] >> 4;
+            const g4 = secretPixels[p * 4 + 1] >> 4;
+            const b4 = secretPixels[p * 4 + 2] >> 4;
+            for (let i = 0; i < 4; i++) bits.push((r4 >> i) & 1);
+            for (let i = 0; i < 4; i++) bits.push((g4 >> i) & 1);
+            for (let i = 0; i < 4; i++) bits.push((b4 >> i) & 1);
+        }
+        const totalBits = bits.length;
+        const bw = Math.floor(hostW / 8), bh = Math.floor(hostH / 8);
+        const totalPositions = bw * bh * this.MID_FREQ.length;
+        // Round-robin interleaving: position p encodes bit (p % totalBits)
+        // This spreads each bit's redundant copies across the entire image
+
+        // --- Embed via QIM into DCT luminance (interleaved) ---
+        let posIdx = 0;
+        for (let by = 0; by + 8 <= hostH; by += 8) {
+            for (let bx = 0; bx + 8 <= hostW; bx += 8) {
+                const block = new Float64Array(64);
+                let avgY = 0;
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const idx = ((by + r) * hostW + (bx + c)) * 4;
+                        block[r * 8 + c] = this.rgbToY(hostPixels[idx], hostPixels[idx+1], hostPixels[idx+2]);
+                        avgY += block[r * 8 + c];
+                    }
+                }
+                avgY /= 64;
+                const Q = this.QUANT_STEP * (0.5 + (avgY / 255) * 0.6);
+                const dct = stegoDct2d(block);
+
+                for (let fi = 0; fi < this.MID_FREQ.length; fi++) {
+                    const bitIdx = posIdx % totalBits;
+                    const [fr, fc] = this.MID_FREQ[fi];
+                    const bit = bits[bitIdx];
+                    const coef = dct[fr * 8 + fc];
+                    const quantized = Math.round(coef / Q) * Q;
+                    dct[fr * 8 + fc] = quantized + (bit ? Q / 3 : -Q / 3);
+                    posIdx++;
+                }
+
+                const spatial = stegoIdct2d(dct);
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const idx = ((by + r) * hostW + (bx + c)) * 4;
+                        const oldY = this.rgbToY(hostPixels[idx], hostPixels[idx+1], hostPixels[idx+2]);
+                        const dy = spatial[r * 8 + c] - oldY;
+                        hostPixels[idx]     = Math.max(0, Math.min(255, Math.round(hostPixels[idx] + dy)));
+                        hostPixels[idx + 1] = Math.max(0, Math.min(255, Math.round(hostPixels[idx+1] + dy)));
+                        hostPixels[idx + 2] = Math.max(0, Math.min(255, Math.round(hostPixels[idx+2] + dy)));
+                    }
+                }
+            }
+        }
+    },
+
+    /**
+     * Extract a secret image from host pixels by reading DCT coefficients.
+     * Tries multiple redundancy levels to find the correct one.
+     * Returns { data: ArrayBuffer, width, height } or null.
+     */
+    extract(hostPixels, hostW, hostH) {
+        const bw = Math.floor(hostW / 8), bh = Math.floor(hostH / 8);
+        const numFreqs = this.MID_FREQ.length;
+        const totalPositions = bw * bh * numFreqs;
+        if (totalPositions < 32) return null;
+
+        // --- Read all DCT positions ---
+        const allBits = new Uint8Array(totalPositions);
+        let posIdx = 0;
+        for (let by = 0; by + 8 <= hostH; by += 8) {
+            for (let bx = 0; bx + 8 <= hostW; bx += 8) {
+                const block = new Float64Array(64);
+                let avgY = 0;
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const idx = ((by + r) * hostW + (bx + c)) * 4;
+                        block[r * 8 + c] = this.rgbToY(hostPixels[idx], hostPixels[idx+1], hostPixels[idx+2]);
+                        avgY += block[r * 8 + c];
+                    }
+                }
+                avgY /= 64;
+                const Q = this.QUANT_STEP * (0.5 + (avgY / 255) * 0.6);
+                const dct = stegoDct2d(block);
+                for (let fi = 0; fi < numFreqs; fi++) {
+                    const [fr, fc] = this.MID_FREQ[fi];
+                    const coef = dct[fr * 8 + fc];
+                    const quantized = Math.round(coef / Q) * Q;
+                    allBits[posIdx++] = (coef - quantized) > 0 ? 1 : 0;
+                }
+            }
+        }
+
+        // --- Round-robin extraction: try different totalBits values ---
+        // Position p encoded bit (p % totalBits), so we must guess totalBits
+        // Try all plausible secret image dimensions
+        for (let side = 4; side <= 255; side++) {
+            for (let pass = 0; pass < 2; pass++) {
+                // pass 0: square, pass 1: close-to-square rectangles
+                let sw, sh;
+                if (pass === 0) { sw = side; sh = side; }
+                else continue; // only square for speed
+                const totalBits = 32 + sw * sh * 12;
+                const redundancy = Math.floor(totalPositions / totalBits);
+                if (redundancy < 2) break; // too little redundancy, stop trying larger
+
+                // Vote on header using round-robin
+                const hdr = new Uint8Array(32);
+                for (let bi = 0; bi < 32; bi++) {
+                    let ones = 0, zeros = 0;
+                    // Collect all positions where (pos % totalBits) === bi
+                    for (let rep = 0; rep < redundancy; rep++) {
+                        const pos = bi + rep * totalBits;
+                        if (pos >= totalPositions) break;
+                        if (allBits[pos]) ones++; else zeros++;
+                    }
+                    hdr[bi] = ones > zeros ? 1 : 0;
+                }
+                // Decode header
+                let magic = 0;
+                for (let i = 0; i < 8; i++) magic |= hdr[i] << i;
+                if (magic !== this.MAGIC) continue;
+                let rsw = 0, rsh = 0, cs = 0;
+                for (let i = 0; i < 8; i++) rsw |= hdr[8 + i] << i;
+                for (let i = 0; i < 8; i++) rsh |= hdr[16 + i] << i;
+                for (let i = 0; i < 8; i++) cs |= hdr[24 + i] << i;
+                if (rsw !== sw || rsh !== sh) continue;
+                if (cs !== ((sw * sh + 0x5A) & 0xFF)) continue;
+
+                // --- Read pixel data with voting ---
+                const secretPixels = new Uint8Array(sw * sh * 4);
+                let valid = true;
+                for (let pbi = 0; pbi < sw * sh * 12; pbi++) {
+                    const bi = 32 + pbi;
+                    let ones = 0, zeros = 0;
+                    for (let rep = 0; rep < redundancy; rep++) {
+                        const pos = bi + rep * totalBits;
+                        if (pos >= totalPositions) break;
+                        if (allBits[pos]) ones++; else zeros++;
+                    }
+                    const pixelIdx = Math.floor(pbi / 12);
+                    const channelBit = pbi % 12;
+                    const channel = Math.floor(channelBit / 4); // 0=R, 1=G, 2=B
+                    const bitPos = channelBit % 4;
+                    const bitVal = ones > zeros ? 1 : 0;
+                    secretPixels[pixelIdx * 4 + channel] |= bitVal << bitPos;
+                }
+                // Expand 4-bit to 8-bit and set alpha
+                for (let p = 0; p < sw * sh; p++) {
+                    for (let ch = 0; ch < 3; ch++) {
+                        const v = secretPixels[p * 4 + ch];
+                        secretPixels[p * 4 + ch] = (v << 4) | v;
+                    }
+                    secretPixels[p * 4 + 3] = 255;
+                }
+                return { data: secretPixels.buffer, width: sw, height: sh };
+            }
+        }
+        return null;
+    }
+};
 
 const ALGOS = {
     'none': (data) => new Uint8Array(data), // stego-only: identity
@@ -470,12 +714,41 @@ const ALGOS = {
 };
 
 self.onmessage = function (e) {
-    const { id, algo, data, width, height, seed, reverse, intensity } = e.data;
+    const { id, algo, data, width, height, seed, reverse, intensity, secretImage, extractSecret } = e.data;
+
+    // Special: DCT extraction only (no algo reversal needed)
+    if (algo === 'dct-extract') {
+        const extracted = DCT_STEGO.extract(new Uint8Array(data), width, height);
+        const transfers = [data];
+        if (extracted) transfers.push(extracted.data);
+        self.postMessage({ id, result: data, extractedSecret: extracted }, transfers);
+        return;
+    }
+
     const prng = getPRNG(seed);
     const fn = ALGOS[algo];
     if (!fn) { self.postMessage({ id, error: 'Unknown algo: ' + algo }); return; }
 
-    let result = fn(new Uint8Array(data), width, height, prng, reverse);
+    let result;
+
+    if (reverse && extractSecret) {
+        // ANY algo: extract DCT secret BEFORE reversing visual transform
+        const pixels = new Uint8Array(data);
+        const extracted = DCT_STEGO.extract(pixels, width, height);
+        result = fn(pixels, width, height, prng, true);
+        const msg = { id, result: result.buffer };
+        const transfers = [result.buffer];
+        if (extracted) { msg.extractedSecret = extracted; transfers.push(extracted.data); }
+        self.postMessage(msg, transfers);
+        return;
+    } else {
+        result = fn(new Uint8Array(data), width, height, prng, reverse);
+    }
+
+    // Embed secret image via DCT AFTER any algo (forward only)
+    if (!reverse && secretImage) {
+        DCT_STEGO.embed(result, width, height, new Uint8Array(secretImage.data), secretImage.width, secretImage.height);
+    }
 
     // Art Glitch: blend original with result by intensity (0-1)
     if (typeof intensity === 'number' && intensity < 1 && !reverse) {

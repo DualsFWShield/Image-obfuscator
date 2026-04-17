@@ -1537,6 +1537,83 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- DCT Steganography Helpers for DFWS ---
+    function calcMaxSecretSide(hostW, hostH) {
+        const bw = Math.floor(hostW / 8), bh = Math.floor(hostH / 8);
+        const totalPositions = bw * bh * 6; // 6 mid-freq positions per block
+        const usableBits = Math.floor(totalPositions / 3); // min 3× redundancy
+        const pixelBits = usableBits - 32; // 32-bit header
+        const pixels = Math.floor(pixelBits / 12); // 12 bits per pixel (4 per channel)
+        return Math.max(4, Math.floor(Math.sqrt(pixels)));
+    }
+
+    function downscaleImageForStego(sourceImg, maxSide) {
+        // Always produce square images for simpler extraction
+        const c = document.createElement('canvas');
+        c.width = maxSide; c.height = maxSide;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(sourceImg, 0, 0, maxSide, maxSide);
+        return ctx.getImageData(0, 0, maxSide, maxSide);
+    }
+
+    function workerApplyDFWS(dataBuffer, w, h, seed, reverse, intensity, secretImgData) {
+        return new Promise((resolve, reject) => {
+            if (!obfWorker) { reject('no worker'); return; }
+            const id = Math.random();
+            const handler = e => {
+                if (e.data.id === id) {
+                    obfWorker.removeEventListener('message', handler);
+                    if (e.data.error) reject(e.data.error);
+                    else resolve(new Uint8Array(e.data.result));
+                }
+            };
+            obfWorker.addEventListener('message', handler);
+            const msg = { id, algo: 'none', data: dataBuffer.slice(0), width: w, height: h, seed, reverse, intensity };
+            const transfers = [msg.data];
+            if (secretImgData) {
+                msg.secretImage = { data: secretImgData.data.buffer.slice(0), width: secretImgData.width, height: secretImgData.height };
+                transfers.push(msg.secretImage.data);
+            }
+            obfWorker.postMessage(msg, transfers);
+        });
+    }
+
+    function workerExtractWithDCT(algo, dataBuffer, w, h, seed) {
+        return new Promise((resolve, reject) => {
+            if (!obfWorker) { reject('no worker'); return; }
+            const id = Math.random();
+            const handler = e => {
+                if (e.data.id === id) {
+                    obfWorker.removeEventListener('message', handler);
+                    if (e.data.error) reject(e.data.error);
+                    else resolve({ pixels: new Uint8Array(e.data.result), extractedSecret: e.data.extractedSecret || null });
+                }
+            };
+            obfWorker.addEventListener('message', handler);
+            const copy = dataBuffer.slice(0);
+            obfWorker.postMessage({ id, algo, data: copy, width: w, height: h, seed, reverse: true, extractSecret: true, intensity: 1 }, [copy]);
+        });
+    }
+
+    function workerExtractDCTOnly(dataBuffer, w, h) {
+        return new Promise((resolve, reject) => {
+            if (!obfWorker) { reject('no worker'); return; }
+            const id = Math.random();
+            const handler = e => {
+                if (e.data.id === id) {
+                    obfWorker.removeEventListener('message', handler);
+                    if (e.data.error) reject(e.data.error);
+                    else resolve(e.data.extractedSecret || null);
+                }
+            };
+            obfWorker.addEventListener('message', handler);
+            const copy = dataBuffer.slice(0);
+            obfWorker.postMessage({ id, algo: 'dct-extract', data: copy, width: w, height: h, seed: '', reverse: false }, [copy]);
+        });
+    }
+
     // --- Theme Toggle (Dark/Light) ---
     const themeBtn = document.getElementById('theme-toggle');
     if (localStorage.getItem('obscurify-theme') === 'light') { document.body.classList.add('light-mode'); themeBtn.textContent = '☀️'; }
@@ -1616,7 +1693,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'rubik':            { level: '🟢 Forte', color: '#10b981', desc: 'Rotation de plans RGB. Effet de brouillage survit à toute compression.' },
         'block-shuffle-8':  { level: '⭐ RÉVERSIBLE', color: '#8b5cf6', desc: 'Permutation de blocs 8×8 (aligné JPEG). Réversible même après compression JPEG Q50+ / WhatsApp.', compReversible: true },
         'block-shuffle-16': { level: '⭐ RÉVERSIBLE', color: '#8b5cf6', desc: 'Permutation de blocs 16×16. Plus robuste aux redimensionnements. Réversible après recompression.', compReversible: true },
-        'dfws':             { level: '\ud83d\udee1\ufe0f DFWS', color: '#f59e0b', desc: 'DualsFWShield — Shuffle + rotation canaux + flip + inversion par bloc 8×8. Résiste JPEG, crop, screenshot. Les parties survivantes sont individuellement restaurables.', compReversible: true },
+        'dfws':             { level: '\ud83d\udee1\ufe0f DFWS', color: '#f59e0b', desc: 'DualsFWShield — Cache l\'image originale directement dans les pixels (DCT). Résiste JPEG, WhatsApp, screenshot. L\'image cachée est extraite même sans métadonnées.', compReversible: true },
         'quantize-shuffle': { level: '🟢 Forte', color: '#10b981', desc: 'Quantification + permutation. La pixélisation résiste naturellement à JPEG.' },
         'color-crush':      { level: '🟢 Forte', color: '#10b981', desc: 'Palette réduite. Le broyage de couleurs est amplifié par la compression.' },
         'blur-noise':       { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Flou + bruit. Le bruit est lissé par JPEG mais le flou persiste.' },
@@ -2031,6 +2108,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
+                // DCT Pixel Steganography: embed original in pixels for ANY algo
+                const dctPixelEnabled = document.getElementById('dct-pixel-toggle')?.checked;
+                if (dctPixelEnabled && embedOriginalCb.checked) {
+                    try {
+                        const maxSide = calcMaxSecretSide(canvas.width, canvas.height);
+                        const secretImgData = downscaleImageForStego(img, maxSide);
+                        const result = await workerApplyDFWS(
+                            imgData.data.buffer.slice(0), canvas.width, canvas.height,
+                            seed, false, 1, secretImgData
+                        );
+                        imgData.data.set(result);
+                        showToast(`🔒 Image cachée dans les pixels (${secretImgData.width}×${secretImgData.height})`, 'info');
+                    } catch(e) {
+                        console.warn('DCT pixel embedding failed:', e);
+                    }
+                }
+
                 // Watermark (LSB or DCT)
                 let activeWmText = wmText;
                 let activeWmMode = wmMode;
@@ -2046,6 +2140,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let metadata = { v: 5, alg: algo, pwd: !!pwd, salt: internalSalt, mime: file.type };
                 if (isRobust) metadata.robust = true;
                 if (activeWmText) { metadata.wm = true; metadata.wmMode = activeWmMode; }
+                if (document.getElementById('dct-pixel-toggle')?.checked && embedOriginalCb.checked) metadata.dctStego = true;
 
                 let fileToEmbed = null;
                 if (otherImageFile) fileToEmbed = otherImageFile;
@@ -2138,20 +2233,52 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let meta, normalizedCanvas = null;
             if (magicIdx === -1) {
-                // FALLBACK: Metadata lost (Crop/JPEG). Try to detect DFWS via Watermark
-                const canvas = document.createElement('canvas');
-                canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(targetObfuscatedImage, 0, 0);
-                const wmDim = RobustWatermark.getDimensions(ctx.getImageData(0,0,canvas.width,canvas.height));
+                // FALLBACK: Metadata lost (Crop/JPEG/Screenshot)
+                const fbCanvas = document.createElement('canvas');
+                fbCanvas.width = targetObfuscatedImage.width; fbCanvas.height = targetObfuscatedImage.height;
+                const fbCtx = fbCanvas.getContext('2d');
+                fbCtx.drawImage(targetObfuscatedImage, 0, 0);
+                const fbImgData = fbCtx.getImageData(0, 0, fbCanvas.width, fbCanvas.height);
+                const wmDim = RobustWatermark.getDimensions(fbImgData);
+                // Also try DCT pixel-level extraction
+                let dctFallback = null;
+                try {
+                    dctFallback = await workerExtractDCTOnly(fbImgData.data.buffer.slice(0), fbCanvas.width, fbCanvas.height);
+                } catch(e) { console.warn('DCT fallback extraction failed:', e); }
                 if (wmDim && wmDim.w && wmDim.h) {
                     showToast(`🔍 Watermark détecté: DFWS (${wmDim.w}x${wmDim.h})`, "info");
                     meta = { v: 5, alg: 'dfws', pwd: false, robust: true, salt: 'public' };
                     normalizedCanvas = document.createElement('canvas');
                     normalizedCanvas.width = wmDim.w; normalizedCanvas.height = wmDim.h;
                     normalizedCanvas.getContext('2d').drawImage(targetObfuscatedImage, 0, 0, wmDim.w, wmDim.h);
+                } else if (dctFallback) {
+                    // No watermark but DCT secret found in pixels!
+                    showToast(`🔍 Image secrète trouvée dans les pixels (${dctFallback.width}×${dctFallback.height})`, "info");
+                    meta = { v: 5, alg: 'dfws', pwd: false, robust: true, salt: 'public' };
                 } else {
-                    throw new Error("Métadonnées et Watermark absents. Image non reconnue.");
+                    throw new Error("Métadonnées, Watermark et stégo DCT absents. Image non reconnue.");
+                }
+                // Show DCT secret immediately if found (metadata lost = this is the primary recovery)
+                if (dctFallback) {
+                    const secretCanvas = document.createElement('canvas');
+                    secretCanvas.width = dctFallback.width; secretCanvas.height = dctFallback.height;
+                    secretCanvas.getContext('2d').putImageData(
+                        new ImageData(new Uint8ClampedArray(dctFallback.data), dctFallback.width, dctFallback.height), 0, 0
+                    );
+                    const displayW = Math.min(512, targetObfuscatedImage.width);
+                    const displayH = Math.round(displayW * dctFallback.height / dctFallback.width);
+                    const displayCanvas = document.createElement('canvas');
+                    displayCanvas.width = displayW; displayCanvas.height = displayH;
+                    const dCtx = displayCanvas.getContext('2d');
+                    dCtx.imageSmoothingEnabled = true;
+                    dCtx.drawImage(secretCanvas, 0, 0, displayW, displayH);
+                    const dctBlob = await new Promise(r => displayCanvas.toBlob(r, 'image/png'));
+                    if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
+                    currentHiddenObjectUrl = URL.createObjectURL(dctBlob);
+                    revertHiddenPreview.src = currentHiddenObjectUrl;
+                    revertHiddenContainer.classList.remove('hidden');
+                    const h3El = revertHiddenContainer.querySelector('h3');
+                    if (h3El) h3El.innerHTML = 'Image Originale Extraite (Pixels DCT) 🔍 <small style="font-weight:normal;color:var(--text-muted);">' + dctFallback.width + '×' + dctFallback.height + ' — résistant compression</small>';
                 }
             } else {
                 const jsonStart = tailString.substring(0, magicIdx).lastIndexOf('{"v":5');
@@ -2217,8 +2344,43 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lsbBytes) { const t = new TextDecoder().decode(lsbBytes); if (t.startsWith("LSB_SIG:")) sigPayload = JSON.parse(t.substring(8)); }
             // Skip algo revert for 'none' (stego-only)
             if (meta.alg !== 'none') {
-                try { const result = await workerApply(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, true, 1); imgData.data.set(result); }
-                catch(e) { applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true); }
+                if (meta.dctStego || meta.alg === 'dfws') {
+                    // Has DCT pixel stego: extract secret + reverse algo
+                    try {
+                        const dfwsResult = await workerExtractWithDCT(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed);
+                        imgData.data.set(dfwsResult.pixels);
+                        if (dfwsResult.extractedSecret && !meta.payload) {
+                            const secret = dfwsResult.extractedSecret;
+                            const secretCanvas = document.createElement('canvas');
+                            secretCanvas.width = secret.width; secretCanvas.height = secret.height;
+                            secretCanvas.getContext('2d').putImageData(
+                                new ImageData(new Uint8ClampedArray(secret.data), secret.width, secret.height), 0, 0
+                            );
+                            const displayW = Math.min(512, canvas.width);
+                            const displayH = Math.round(displayW * secret.height / secret.width);
+                            const displayCanvas = document.createElement('canvas');
+                            displayCanvas.width = displayW; displayCanvas.height = displayH;
+                            const dCtx = displayCanvas.getContext('2d');
+                            dCtx.imageSmoothingEnabled = true;
+                            dCtx.drawImage(secretCanvas, 0, 0, displayW, displayH);
+                            const dctBlob = await new Promise(r => displayCanvas.toBlob(r, 'image/png'));
+                            if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
+                            currentHiddenObjectUrl = URL.createObjectURL(dctBlob);
+                            revertHiddenPreview.src = currentHiddenObjectUrl;
+                            revertHiddenContainer.classList.remove('hidden');
+                            const h3El = revertHiddenContainer.querySelector('h3');
+                            if (h3El) h3El.innerHTML = 'Image Originale Extraite (Pixels DCT) 🔍 <small style="font-weight:normal;color:var(--text-muted);">' + secret.width + '×' + secret.height + ' — résistant compression</small>';
+                            showToast('🔍 Image secrète extraite des pixels (' + secret.width + '×' + secret.height + ')', 'info');
+                        }
+                    } catch(e) {
+                        console.warn('DCT extract failed, fallback:', e);
+                        try { const result = await workerApply(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, true, 1); imgData.data.set(result); }
+                        catch(e2) { applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true); }
+                    }
+                } else {
+                    try { const result = await workerApply(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, true, 1); imgData.data.set(result); }
+                    catch(e) { applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true); }
+                }
             }
             ctx.putImageData(imgData, 0, 0);
             const mathBlob = await new Promise(r => canvas.toBlob(r, meta.mime));
