@@ -1,12 +1,16 @@
 {
-    "name": "Obscurify",
+    "name": "Obscurify Pro",
     "short_name": "Obscurify",
-    "description": "Obfuscation d'images & partage de fichiers serverless",
+    "description": "Suite cryptographique locale & obfuscation d'images réversible",
     "start_url": "./index.html",
     "display": "standalone",
-    "background_color": "#0b0b12",
+    "background_color": "#08090e",
     "theme_color": "#6366f1",
     "icons": [
-        { "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>", "sizes": "any", "type": "image/svg+xml" }
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%236366f1'/><text y='70' x='18' font-size='60'>🔒</text></svg>",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
     ]
 }

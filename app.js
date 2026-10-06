@@ -1,191 +1,1288 @@
-const MAGIC_MARKER = '_OBFS_SAAS_';
+/**
+ * Obscurify Pro — Enterprise Client-Side Visual Cryptography Suite
+ * Clean ES6+ Architecture: Zero Network Leaks · Web Crypto API · Multi-Threaded Workers
+ */
 
-document.addEventListener('DOMContentLoaded', () => {
-    // --- UI Elements ---
-    const tabs = document.querySelectorAll('.tab-btn');
-    const views = document.querySelectorAll('.view-content');
+const MAGIC_V4 = '_OBFS_PRO_v4_';
+const LEGACY_MAGIC = '_OBFS_SAAS_';
 
-    const obfDrop = document.getElementById('obfuscate-drop');
-    const obfFile = document.getElementById('obfuscate-file');
-    const obfPreview = document.getElementById('obfuscate-preview');
-    const btnObfuscate = document.getElementById('btn-obfuscate');
-    
-    const algoSelect = document.getElementById('algo-select');
-    const obfPwd = document.getElementById('obfuscate-pwd');
-    const obfSig = document.getElementById('obfuscate-sig');
-    const sigLocation = document.getElementById('sig-location');
-    const embedOriginalCb = document.getElementById('embed-original');
-    const embedOtherFile = document.getElementById('embed-other-file');
-
-    const revDrop = document.getElementById('revert-drop');
-    const revFile = document.getElementById('revert-file');
-    const revPwd = document.getElementById('revert-pwd');
-    const btnRevert = document.getElementById('btn-revert');
-    
-    const revertResult = document.getElementById('revert-result');
-    const revertPreview = document.getElementById('revert-preview');
-    const btnDownloadMath = document.getElementById('btn-download-math');
-
-    const revertHiddenContainer = document.getElementById('revert-hidden-container');
-    const revertHiddenPreview = document.getElementById('revert-hidden-preview');
-    const btnDownloadHidden = document.getElementById('btn-download-hidden');
-
-    const revertSigContainer = document.getElementById('revert-sig-container');
-    const revertSigText = document.getElementById('revert-sig-text');
-
-    let originalImageFile = null;
-    let uploadedImage = new Image();
-    let otherImageFile = null;
-
-    let currentMathObjectUrl = null;
-    let currentHiddenObjectUrl = null;
-
-    let targetObfuscatedFile = null;
-    let targetObfuscatedImage = new Image();
-
-    // Tabs
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            tabs.forEach(t => t.classList.remove('active'));
-            views.forEach(v => v.classList.remove('active'));
-            tab.classList.add('active');
-            document.getElementById(tab.dataset.target).classList.add('active');
-        });
-    });
-
-    // File Drag & Drop
-    function setupDropZone(dropZone, fileInput, onChange) {
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-        dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.classList.remove('dragover'); });
-        dropZone.addEventListener('drop', e => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            if(e.dataTransfer.files.length) {
-                fileInput.files = e.dataTransfer.files;
-                onChange(e.dataTransfer.files[0]);
-            }
-        });
-        fileInput.addEventListener('change', e => {
-            if(e.target.files.length) onChange(e.target.files[0]);
-        });
-    }
-
-    setupDropZone(obfDrop, obfFile, file => {
-        obfDrop.querySelector('.drop-text').classList.add('hidden');
-        obfPreview.classList.remove('hidden');
-        originalImageFile = file;
-        uploadedImage.src = URL.createObjectURL(file);
-        obfPreview.src = uploadedImage.src;
-    });
-
-    embedOtherFile.addEventListener('change', e => {
-        if(e.target.files.length) {
-            otherImageFile = e.target.files[0];
-            embedOriginalCb.checked = false; 
-        }
-    });
-
-    setupDropZone(revDrop, revFile, file => {
-        const revText = revDrop.querySelector('.drop-text');
-        revText.innerText = "Fichier sélectionné : " + file.name;
-        targetObfuscatedFile = file;
-        targetObfuscatedImage.src = URL.createObjectURL(file);
-    });
-
-    // --- CRYPTO HELPERS ---
-    async function deriveKey(password, salt) {
+// ============================================================================
+// 1. CRYPTO ENGINE (Web Crypto API · AES-256-GCM · PBKDF2 · SHA-256)
+// ============================================================================
+const CryptoEngine = {
+    /**
+     * Derive AES-GCM 256-bit key from password using PBKDF2 (SHA-256, 250k rounds)
+     */
+    async deriveKey(password, saltUint8) {
         const enc = new TextEncoder();
         const keyMaterial = await crypto.subtle.importKey(
-            'raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveBits', 'deriveKey']
+            'raw',
+            enc.encode(password),
+            { name: 'PBKDF2' },
+            false,
+            ['deriveKey']
         );
         return await crypto.subtle.deriveKey(
-            { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
-            keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+            {
+                name: 'PBKDF2',
+                salt: saltUint8,
+                iterations: 250000,
+                hash: 'SHA-256'
+            },
+            keyMaterial,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt', 'decrypt']
         );
-    }
+    },
 
-    async function encryptData(dataBuffer, password) {
-        if (!password) return { encrypted: dataBuffer, salt: null, iv: null };
+    /**
+     * Authenticated AES-GCM encryption with 128-bit random salt and 96-bit IV
+     */
+    async encryptData(buffer, password) {
+        if (!password) return { encrypted: buffer, salt: null, iv: null };
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const key = await deriveKey(password, salt);
-        const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, dataBuffer);
-        return { encrypted, salt: Array.from(salt), iv: Array.from(iv) };
-    }
+        const key = await this.deriveKey(password, salt);
+        const encrypted = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            buffer
+        );
+        return {
+            encrypted,
+            salt: Array.from(salt),
+            iv: Array.from(iv)
+        };
+    },
 
-    async function decryptData(encryptedBuffer, password, saltArr, ivArr) {
-        if (!password || !saltArr) return encryptedBuffer; 
+    /**
+     * Authenticated AES-GCM decryption
+     */
+    async decryptData(encryptedBuffer, password, saltArr, ivArr) {
+        if (!password || !saltArr || !ivArr) return encryptedBuffer;
         const salt = new Uint8Array(saltArr);
         const iv = new Uint8Array(ivArr);
-        const key = await deriveKey(password, salt);
-        return await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encryptedBuffer);
-    }
+        const key = await this.deriveKey(password, salt);
+        return await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            encryptedBuffer
+        );
+    },
 
-    function arrayBufferToBase64(buffer) {
+    /**
+     * Compute SHA-256 / SHA-512 hex digest of any Blob or ArrayBuffer
+     */
+    async hashBuffer(buffer, algo = 'SHA-256') {
+        const buf = buffer instanceof Blob ? await buffer.arrayBuffer() : buffer;
+        const hash = await crypto.subtle.digest(algo, buf);
+        return Array.from(new Uint8Array(hash))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+    },
+
+    /**
+     * Generate deterministic salt from password for robust recovery mode
+     */
+    async getDeterministicSalt(password) {
+        const hash = await crypto.subtle.digest(
+            'SHA-256',
+            new TextEncoder().encode(password + 'OBSCURIFY_PRO_CANONICAL_SALT_v4')
+        );
+        return Array.from(new Uint8Array(hash).slice(0, 16))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+    },
+
+    /**
+     * Calculate password entropy bits & estimated crack time
+     */
+    evaluateEntropy(password) {
+        if (!password) return { bits: 0, text: 'Vide (Mode Public)', crackTime: 'Immédiat', level: 0 };
+        let pool = 0;
+        if (/[a-z]/.test(password)) pool += 26;
+        if (/[A-Z]/.test(password)) pool += 26;
+        if (/[0-9]/.test(password)) pool += 10;
+        if (/[^a-zA-Z0-9]/.test(password)) pool += 33;
+
+        const entropy = Math.round(password.length * Math.log2(Math.max(1, pool)));
+        let level = 1;
+        let crackTime = 'Quelques secondes';
+
+        if (entropy >= 80) {
+            level = 4;
+            crackTime = '> 1 000 ans (Niveau Militaire)';
+        } else if (entropy >= 55) {
+            level = 3;
+            crackTime = 'Plusieurs mois / années';
+        } else if (entropy >= 35) {
+            level = 2;
+            crackTime = 'Quelques jours / semaines';
+        }
+
+        return { bits: entropy, text: `${entropy} bits d'entropie`, crackTime, level };
+    },
+
+    bufferToBase64(buf) {
         let binary = '';
-        const bytes = new Uint8Array(buffer);
+        const bytes = new Uint8Array(buf);
         for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
         return btoa(binary);
-    }
+    },
 
-    function base64ToArrayBuffer(base64) {
-        const binary = atob(base64);
+    base64ToBuffer(b64) {
+        const binary = atob(b64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         return bytes.buffer;
-    }
+    },
 
-    async function compressData(buffer) {
+    async compress(buffer) {
         if (typeof CompressionStream === 'undefined') return buffer;
         const stream = new Blob([buffer]).stream().pipeThrough(new CompressionStream('deflate-raw'));
         return await new Response(stream).arrayBuffer();
-    }
+    },
 
-    async function decompressData(buffer) {
+    async decompress(buffer) {
         if (typeof DecompressionStream === 'undefined') return buffer;
         try {
             const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
             return await new Response(stream).arrayBuffer();
-        } catch(e) { return buffer; }
+        } catch {
+            return buffer;
+        }
+    }
+};
+
+// ============================================================================
+// 2. EXIF & METADATA INSPECTOR & STRIPPER
+// ============================================================================
+const EXIFCleaner = {
+    /**
+     * Inspect file headers for metadata tags (JPEG EXIF, PNG tEXt, WebP)
+     */
+    async inspect(file) {
+        const buffer = await file.arrayBuffer();
+        const view = new DataView(buffer);
+        const metadata = {
+            'Nom du fichier': file.name,
+            'Format détecté': file.type || 'Inconnu',
+            'Taille': `${(file.size / 1024).toFixed(1)} KB`,
+            'Horodatage local': new Date(file.lastModified).toLocaleString('fr-FR'),
+            'Métadonnées EXIF': 'Non détectées'
+        };
+
+        // JPEG EXIF check (Marker 0xFFE1)
+        if (view.getUint16(0) === 0xFFD8) {
+            let offset = 2;
+            while (offset < view.byteLength) {
+                const marker = view.getUint16(offset);
+                offset += 2;
+                if (marker === 0xFFE1) {
+                    metadata['Métadonnées EXIF'] = '⚠️ Détectées (GPS, appareil photo, date de prise)';
+                    metadata['Segment APP1'] = 'Présent (Contient potentiellement la géolocalisation)';
+                    break;
+                } else if ((marker & 0xFF00) !== 0xFF00) break;
+                else {
+                    const len = view.getUint16(offset);
+                    offset += len;
+                }
+            }
+        } else if (file.type === 'image/png') {
+            metadata['Métadonnées EXIF'] = 'Format PNG (Chunks d\'en-tête natifs)';
+        }
+
+        return metadata;
+    },
+
+    /**
+     * Strip EXIF and telemetry chunks by redrawing image on a pure memory canvas
+     */
+    async sanitizeImage(imgElement, format = 'image/png') {
+        const canvas = document.createElement('canvas');
+        canvas.width = imgElement.naturalWidth || imgElement.width;
+        canvas.height = imgElement.naturalHeight || imgElement.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(imgElement, 0, 0);
+        return await new Promise(resolve => canvas.toBlob(resolve, format));
+    }
+};
+
+// ============================================================================
+// 3. IN-THREAD ALGORITHM ENGINE & WORKER BRIDGE (Zero-Fail Hybrid Execution)
+// ============================================================================
+const InThreadExecutor = (() => {
+    function xmur3(str) {
+        let h = 1779033703 ^ str.length;
+        for (let i = 0; i < str.length; i++) {
+            h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+            h = h << 13 | h >>> 19;
+        }
+        return function () {
+            h = Math.imul(h ^ (h >>> 16), 2246822507);
+            h = Math.imul(h ^ (h >>> 13), 3266489909);
+            return (h ^= h >>> 16) >>> 0;
+        };
+    }
+    function mulberry32(a) {
+        return function () {
+            let t = a += 0x6D2B79F5;
+            t = Math.imul(t ^ t >>> 15, t | 1);
+            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+    }
+    function getPRNG(seedStr) { return mulberry32(xmur3(seedStr)()); }
+    function shuffleArray(arr, prng) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(prng() * (i + 1));
+            const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+        }
+    }
+    const mod = (n, m) => ((n % m) + m) % m;
+
+    function applyXorShuffle(data, w, h, prng, rev) {
+        const tp = w * h;
+        const xs = new Uint8Array(tp * 3);
+        for (let i = 0; i < xs.length; i++) xs[i] = Math.floor(prng() * 256);
+        const idx = new Int32Array(tp);
+        for (let i = 0; i < tp; i++) idx[i] = i;
+        shuffleArray(idx, prng);
+        const src = new Uint8Array(data);
+        const dst = new Uint8Array(data.length);
+        if (!rev) {
+            for (let i = 0; i < tp; i++) {
+                const j = idx[i];
+                dst[j * 4]     = src[i * 4]     ^ xs[i * 3];
+                dst[j * 4 + 1] = src[i * 4 + 1] ^ xs[i * 3 + 1];
+                dst[j * 4 + 2] = src[i * 4 + 2] ^ xs[i * 3 + 2];
+                dst[j * 4 + 3] = src[i * 4 + 3];
+            }
+        } else {
+            for (let i = 0; i < tp; i++) {
+                const j = idx[i];
+                dst[i * 4]     = src[j * 4]     ^ xs[i * 3];
+                dst[i * 4 + 1] = src[j * 4 + 1] ^ xs[i * 3 + 1];
+                dst[i * 4 + 2] = src[j * 4 + 2] ^ xs[i * 3 + 2];
+                dst[i * 4 + 3] = src[j * 4 + 3];
+            }
+        }
+        return dst;
     }
 
-    // --- LSB Steganography ---
-    function encodeLSB(imgData, payloadBytes) {
+    function applyLogisticXOR(data, w, h, prng, rev) {
+        const tp = w * h;
+        const xs = new Uint8Array(tp * 3);
+        let x = prng() * 0.5 + 0.2;
+        const r = 3.99 + prng() * 0.009;
+        for (let i = 0; i < xs.length; i++) {
+            x = r * x * (1 - x);
+            xs[i] = Math.floor(x * 256);
+        }
+        const src = new Uint8Array(data);
+        const dst = new Uint8Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+            if ((i + 1) % 4 === 0) dst[i] = src[i];
+            else {
+                const pIdx = Math.floor(i / 4);
+                const cIdx = i % 4;
+                dst[i] = src[i] ^ xs[pIdx * 3 + cIdx];
+            }
+        }
+        return dst;
+    }
+
+    function applyCatMap(data, w, h, prng, rev) {
+        const iter = 5 + Math.floor(prng() * 15);
+        const src32 = new Uint32Array(data.buffer.slice(0));
+        const dst32 = new Uint32Array(w * h);
+        const mapping = new Int32Array(w * h);
+        for (let i = 0; i < w * h; i++) mapping[i] = i;
+        for (let it = 0; it < iter; it++) {
+            const next = new Int32Array(w * h);
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    if (!rev) {
+                        const nx = (x + y) % w;
+                        const ny = (nx + y) % h;
+                        next[ny * w + nx] = mapping[y * w + x];
+                    } else {
+                        const py = mod(y - x, h);
+                        const px = mod(x - py, w);
+                        next[py * w + px] = mapping[y * w + x];
+                    }
+                }
+            }
+            mapping.set(next);
+        }
+        for (let i = 0; i < w * h; i++) dst32[i] = src32[mapping[i]];
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyBakerMap(data, w, h, prng, rev) {
+        const total = w * h;
+        const src32 = new Uint32Array(data.buffer.slice(0));
+        const dst32 = new Uint32Array(total);
+        const iter = 10 + Math.floor(prng() * 10);
+        const mapping = new Int32Array(total);
+        for (let i = 0; i < total; i++) mapping[i] = i;
+        for (let it = 0; it < iter; it++) {
+            const next = new Int32Array(total);
+            if (!rev) {
+                let l = 0, r = Math.floor((total + 1) / 2);
+                for (let i = 0; i < total; i++) {
+                    if (i % 2 === 0) next[l++] = mapping[i];
+                    else next[r++] = mapping[i];
+                }
+            } else {
+                const half = Math.floor((total + 1) / 2);
+                for (let i = 0; i < total; i++) {
+                    if (i < half) next[i * 2] = mapping[i];
+                    else next[(i - half) * 2 + 1] = mapping[i];
+                }
+            }
+            mapping.set(next);
+        }
+        for (let i = 0; i < total; i++) dst32[i] = src32[mapping[i]];
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyAffineMap(data, w, h, prng, rev) {
+        const b = Math.floor(prng() * 20) + 1, c = Math.floor(prng() * 20) + 1;
+        const src32 = new Uint32Array(data.buffer.slice(0));
+        const dst32 = new Uint32Array(w * h);
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (!rev) {
+                    const nx = mod(x + b * y, w), ny = mod(c * nx + y, h);
+                    dst32[ny * w + nx] = src32[y * w + x];
+                } else {
+                    const py = mod(y - c * x, h), px = mod(x - b * py, w);
+                    dst32[py * w + px] = src32[y * w + x];
+                }
+            }
+        }
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyWaveShift(data, w, h, prng, rev) {
+        const fX = 10 + prng() * 50, aX = 10 + prng() * 100;
+        const fY = 10 + prng() * 50, aY = 10 + prng() * 100;
+        const src32 = new Uint32Array(data.buffer.slice(0));
+        const dst32 = new Uint32Array(w * h);
+        if (!rev) {
+            const tmp = new Uint32Array(w * h);
+            for (let y = 0; y < h; y++) {
+                const s = Math.floor(Math.sin(y / fY) * aX);
+                for (let x = 0; x < w; x++) tmp[y * w + mod(x + s, w)] = src32[y * w + x];
+            }
+            for (let x = 0; x < w; x++) {
+                const s = Math.floor(Math.cos(x / fX) * aY);
+                for (let y = 0; y < h; y++) dst32[mod(y + s, h) * w + x] = tmp[y * w + x];
+            }
+        } else {
+            const tmp = new Uint32Array(w * h);
+            for (let x = 0; x < w; x++) {
+                const s = Math.floor(Math.cos(x / fX) * aY);
+                for (let y = 0; y < h; y++) tmp[mod(y - s, h) * w + x] = src32[y * w + x];
+            }
+            for (let y = 0; y < h; y++) {
+                const s = Math.floor(Math.sin(y / fY) * aX);
+                for (let x = 0; x < w; x++) dst32[y * w + mod(x - s, w)] = tmp[y * w + x];
+            }
+        }
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyPrimeScatter(data, w, h, prng, rev) {
+        const N = BigInt(w * h);
+        if (N === 0n) return new Uint8Array(data);
+        let P = BigInt(Math.floor(prng() * 1000000) + 1000000);
+        function gcd(a, b) { while (b !== 0n) { let t = b; b = a % b; a = t; } return a; }
+        function modInverse(a, m) {
+            let m0 = m, y = 0n, x = 1n;
+            if (m === 1n) return 0n;
+            while (a > 1n) { let q = a / m, t = m; m = a % m; a = t; t = y; y = x - q * y; x = t; }
+            if (x < 0n) x += m0;
+            return x;
+        }
+        while (gcd(P, N) !== 1n) P += 1n;
+        const invP = modInverse(P, N), factor = rev ? invP : P;
+        const src32 = new Uint32Array(data.buffer.slice(0)), dst32 = new Uint32Array(w * h);
+        for (let i = 0n; i < N; i++) dst32[Number((i * factor) % N)] = src32[Number(i)];
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyRgbShift(data, w, h, prng, rev) {
+        const drx = Math.floor(prng() * w), dry = Math.floor(prng() * h);
+        const dgx = Math.floor(prng() * w), dgy = Math.floor(prng() * h);
+        const dbx = Math.floor(prng() * w), dby = Math.floor(prng() * h);
+        const src = new Uint8Array(data), dst = new Uint8Array(data.length);
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                const rx = mod(rev ? x - drx : x + drx, w), ry = mod(rev ? y - dry : y + dry, h);
+                const gx = mod(rev ? x - dgx : x + dgx, w), gy = mod(rev ? y - dgy : y + dgy, h);
+                const bx = mod(rev ? x - dbx : x + dbx, w), by = mod(rev ? y - dby : y + dby, h);
+                if (!rev) {
+                    dst[(ry * w + rx) * 4]     = src[i];
+                    dst[(gy * w + gx) * 4 + 1] = src[i + 1];
+                    dst[(by * w + bx) * 4 + 2] = src[i + 2];
+                } else {
+                    dst[i]     = src[(ry * w + rx) * 4];
+                    dst[i + 1] = src[(gy * w + gx) * 4 + 1];
+                    dst[i + 2] = src[(by * w + bx) * 4 + 2];
+                }
+                dst[i + 3] = src[i + 3];
+            }
+        }
+        return dst;
+    }
+
+    function hilbertD2XY(n, d) {
+        let x = 0, y = 0, rx, ry, s, t = d;
+        for (s = 1; s < n; s *= 2) {
+            rx = 1 & (t / 2); ry = 1 & (t ^ rx);
+            if (ry === 0) { if (rx === 1) { x = s - 1 - x; y = s - 1 - y; } const tmp = x; x = y; y = tmp; }
+            x += s * rx; y += s * ry; t = Math.floor(t / 4);
+        }
+        return [x, y];
+    }
+    function applyHilbert(data, w, h, prng, rev) {
+        const total = w * h;
+        let n = 1; while (n * n < total) n *= 2;
+        const src32 = new Uint32Array(data.buffer.slice(0)), dst32 = new Uint32Array(total);
+        const offset = Math.floor(prng() * 1000000), mapping = new Int32Array(total);
+        let idx = 0;
+        for (let d = 0; d < n * n && idx < total; d++) {
+            const [hx, hy] = hilbertD2XY(n, (d + offset) % (n * n));
+            if (hx < w && hy < h) { mapping[idx] = hy * w + hx; idx++; }
+        }
+        while (idx < total) { mapping[idx] = idx; idx++; }
+        if (!rev) { for (let i = 0; i < total; i++) dst32[mapping[i]] = src32[i]; }
+        else { for (let i = 0; i < total; i++) dst32[i] = src32[mapping[i]]; }
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applySpiral(data, w, h, prng, rev) {
+        const total = w * h;
+        const src32 = new Uint32Array(data.buffer.slice(0)), dst32 = new Uint32Array(total);
+        const spiral = [];
+        let top = 0, bottom = h - 1, left = 0, right = w - 1;
+        while (top <= bottom && left <= right) {
+            for (let x = left; x <= right; x++) spiral.push(top * w + x); top++;
+            for (let y = top; y <= bottom; y++) spiral.push(y * w + right); right--;
+            if (top <= bottom) { for (let x = right; x >= left; x--) spiral.push(bottom * w + x); bottom--; }
+            if (left <= right) { for (let y = bottom; y >= top; y--) spiral.push(y * w + left); left++; }
+        }
+        if (!rev) { for (let i = 0; i < total; i++) dst32[spiral[i]] = src32[i]; }
+        else { for (let i = 0; i < total; i++) dst32[i] = src32[spiral[i]]; }
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyZigzag(data, w, h, prng, rev) {
+        const total = w * h;
+        const src32 = new Uint32Array(data.buffer.slice(0)), dst32 = new Uint32Array(total);
+        const order = [];
+        for (let sum = 0; sum < w + h - 1; sum++) {
+            if (sum % 2 === 0) { for (let y = Math.min(sum, h - 1); y >= Math.max(0, sum - w + 1); y--) order.push(y * w + (sum - y)); }
+            else { for (let y = Math.max(0, sum - w + 1); y <= Math.min(sum, h - 1); y++) order.push(y * w + (sum - y)); }
+        }
+        if (!rev) { for (let i = 0; i < total; i++) dst32[order[i]] = src32[i]; }
+        else { for (let i = 0; i < total; i++) dst32[i] = src32[order[i]]; }
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyChirikov(data, w, h, prng, rev) {
+        const K = 2 + prng() * 8, iter = 3 + Math.floor(prng() * 7);
+        const src32 = new Uint32Array(data.buffer.slice(0)), dst32 = new Uint32Array(w * h);
+        const mapping = new Int32Array(w * h); for (let i = 0; i < w * h; i++) mapping[i] = i;
+        const TWO_PI = 2 * Math.PI;
+        for (let it = 0; it < iter; it++) {
+            const next = new Int32Array(w * h);
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    if (!rev) {
+                        const pn = mod(y + Math.floor(K * w * Math.sin(TWO_PI * x / w) / TWO_PI), h);
+                        const qn = mod(x + pn, w);
+                        next[pn * w + qn] = mapping[y * w + x];
+                    } else {
+                        const qp = mod(x - y, w);
+                        const pp = mod(y - Math.floor(K * w * Math.sin(TWO_PI * qp / w) / TWO_PI), h);
+                        next[pp * w + qp] = mapping[y * w + x];
+                    }
+                }
+            }
+            mapping.set(next);
+        }
+        for (let i = 0; i < w * h; i++) dst32[i] = src32[mapping[i]];
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyHenon(data, w, h, prng, rev) {
+        const a = 1.2 + prng() * 0.2, b = 0.2 + prng() * 0.1, total = w * h;
+        const src32 = new Uint32Array(data.buffer.slice(0)), dst32 = new Uint32Array(total);
+        const seq = new Float64Array(total);
+        let xh = prng() * 0.5, yh = prng() * 0.5;
+        for (let i = 0; i < total; i++) {
+            const newX = 1 - a * xh * xh + yh; yh = b * xh; xh = newX; seq[i] = xh;
+        }
+        const idx = new Int32Array(total);
+        for (let i = 0; i < total; i++) idx[i] = i;
+        idx.sort((i1, i2) => seq[i1] - seq[i2]);
+        if (!rev) { for (let i = 0; i < total; i++) dst32[idx[i]] = src32[i]; }
+        else { for (let i = 0; i < total; i++) dst32[i] = src32[idx[i]]; }
+        return new Uint8Array(dst32.buffer);
+    }
+
+    function applyRubik(data, w, h, prng, rev) {
+        const src = new Uint8Array(data), dst = new Uint8Array(data.length); dst.set(src);
+        const numMoves = 20 + Math.floor(prng() * 40), moves = [];
+        for (let i = 0; i < numMoves; i++) {
+            moves.push({ channel: Math.floor(prng() * 3), isRow: prng() < 0.5, index: Math.floor(prng() * Math.max(w, h)), shift: Math.floor(prng() * Math.max(w, h)) });
+        }
+        if (rev) moves.reverse();
+        for (const m of moves) {
+            const ch = m.channel;
+            if (m.isRow) {
+                const y = m.index % h, row = new Uint8Array(w);
+                for (let x = 0; x < w; x++) row[x] = dst[(y * w + x) * 4 + ch];
+                for (let x = 0; x < w; x++) dst[(y * w + x) * 4 + ch] = row[rev ? mod(x + m.shift, w) : mod(x - m.shift, w)];
+            } else {
+                const x = m.index % w, col = new Uint8Array(h);
+                for (let y = 0; y < h; y++) col[y] = dst[(y * w + x) * 4 + ch];
+                for (let y = 0; y < h; y++) dst[(y * w + x) * 4 + ch] = col[rev ? mod(y + m.shift, h) : mod(y - m.shift, h)];
+            }
+        }
+        return dst;
+    }
+
+    function applyBlockShuffleWorker(data, width, height, prng, reverse, blockSize) {
+        const bw = Math.floor(width / blockSize), bh = Math.floor(height / blockSize), numBlocks = bw * bh;
+        if (numBlocks < 2) return data;
+        const perm = Array.from({ length: numBlocks }, (_, i) => i), rands = [];
+        for (let i = numBlocks - 1; i > 0; i--) rands.push(Math.floor(prng() * (i + 1)));
+        for (let k = 0; k < rands.length; k++) { const i = numBlocks - 1 - k; [perm[i], perm[rands[k]]] = [perm[rands[k]], perm[i]]; }
+        const src = new Uint8Array(data), dst = new Uint8Array(src.length); dst.set(src);
+        for (let bi = 0; bi < numBlocks; bi++) {
+            const srcIdx = reverse ? perm[bi] : bi, dstIdx = reverse ? bi : perm[bi];
+            const srcX = (srcIdx % bw) * blockSize, srcY = Math.floor(srcIdx / bw) * blockSize;
+            const dstX = (dstIdx % bw) * blockSize, dstY = Math.floor(dstIdx / bw) * blockSize;
+            for (let dy = 0; dy < blockSize; dy++) {
+                const srcRow = ((srcY + dy) * width + srcX) * 4, dstRow = ((dstY + dy) * width + dstX) * 4;
+                for (let dx = 0; dx < blockSize; dx++) {
+                    const si = srcRow + dx * 4, di = dstRow + dx * 4;
+                    dst[di] = src[si]; dst[di + 1] = src[si + 1]; dst[di + 2] = src[si + 2]; dst[di + 3] = src[si + 3];
+                }
+            }
+        }
+        return dst;
+    }
+
+    function applyDFWSWorker(data, w, h, prng, reverse) {
+        const BS = 16, bw = Math.floor(w / BS), bh = Math.floor(h / BS), numBlocks = bw * bh;
+        if (numBlocks < 5) return data;
+        const anchorIndices = new Set([0, bw - 1, bw * (bh - 1), numBlocks - 1]);
+        const transforms = new Array(numBlocks);
+        for (let i = 0; i < numBlocks; i++) transforms[i] = { chanRot: Math.floor(prng() * 3), hFlip: prng() > 0.5, vFlip: prng() > 0.5, invert: prng() > 0.5 };
+        const shuffledIndices = [];
+        for (let i = 0; i < numBlocks; i++) if (!anchorIndices.has(i)) shuffledIndices.push(i);
+        const perm = [...shuffledIndices];
+        for (let i = perm.length - 1; i > 0; i--) { const j = Math.floor(prng() * (i + 1)); [perm[i], perm[j]] = [perm[j], perm[i]]; }
+        const src = new Uint8Array(data), dst = new Uint8Array(src.length); dst.set(src);
+
+        function transformBlock(srcBuf, dstBuf, sx, sy, dx, dy, tf, rev, isAnchor) {
+            for (let by = 0; by < BS; by++) {
+                for (let bx = 0; bx < BS; bx++) {
+                    const si = ((sy + by) * w + (sx + bx)) * 4;
+                    if (isAnchor) {
+                        const di = ((dy + by) * w + (dx + bx)) * 4;
+                        dstBuf[di]     = 255 - srcBuf[si];
+                        dstBuf[di + 1] = 255 - srcBuf[si + 1];
+                        dstBuf[di + 2] = 255 - srcBuf[si + 2];
+                        dstBuf[di + 3] = srcBuf[si + 3];
+                        continue;
+                    }
+                    const rx = rev ? (tf.hFlip ? BS - 1 - bx : bx) : bx, ry = rev ? (tf.vFlip ? BS - 1 - by : by) : by;
+                    const ox = !rev ? (tf.hFlip ? BS - 1 - bx : bx) : bx, oy = !rev ? (tf.vFlip ? BS - 1 - by : by) : by;
+                    const cur_si = ((sy + ry) * w + (sx + rx)) * 4, di = ((dy + oy) * w + (dx + ox)) * 4;
+                    let r = srcBuf[cur_si], g = srcBuf[cur_si + 1], b = srcBuf[cur_si + 2];
+                    if (!rev) {
+                        if (tf.chanRot === 1) { const t = r; r = g; g = b; b = t; } else if (tf.chanRot === 2) { const t = r; r = b; b = g; g = t; }
+                        if (tf.invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+                    } else {
+                        if (tf.invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+                        if (tf.chanRot === 1) { const t = b; b = g; g = r; r = t; } else if (tf.chanRot === 2) { const t = g; g = b; b = r; r = t; }
+                    }
+                    dstBuf[di] = r; dstBuf[di + 1] = g; dstBuf[di + 2] = b; dstBuf[di + 3] = srcBuf[si + 3];
+                }
+            }
+        }
+        anchorIndices.forEach(idx => transformBlock(src, dst, (idx % bw) * BS, Math.floor(idx / bw) * BS, (idx % bw) * BS, Math.floor(idx / bw) * BS, null, reverse, true));
+        if (!reverse) {
+            for (let i = 0; i < shuffledIndices.length; i++) {
+                const sIdx = shuffledIndices[i], dIdx = perm[i];
+                transformBlock(src, dst, (sIdx % bw) * BS, Math.floor(sIdx / bw) * BS, (dIdx % bw) * BS, Math.floor(dIdx / bw) * BS, transforms[sIdx], false, false);
+            }
+        } else {
+            for (let i = 0; i < shuffledIndices.length; i++) {
+                const dIdx = shuffledIndices[i], sIdx = perm[i];
+                transformBlock(src, dst, (sIdx % bw) * BS, Math.floor(sIdx / bw) * BS, (dIdx % bw) * BS, Math.floor(dIdx / bw) * BS, transforms[dIdx], true, false);
+            }
+        }
+        const coveredW = bw * BS, coveredH = bh * BS;
+        for (let y = 0; y < h; y++) {
+            for (let x = coveredW; x < w; x++) {
+                const i = (y * w + x) * 4, xorVal = (prng() * 255) | 0;
+                dst[i] ^= xorVal; dst[i + 1] ^= xorVal; dst[i + 2] ^= xorVal; dst[i + 3] = src[i + 3];
+            }
+        }
+        for (let y = coveredH; y < h; y++) {
+            for (let x = 0; x < coveredW; x++) {
+                const i = (y * w + x) * 4, xorVal = (prng() * 255) | 0;
+                dst[i] ^= xorVal; dst[i + 1] ^= xorVal; dst[i + 2] ^= xorVal; dst[i + 3] = src[i + 3];
+            }
+        }
+        return dst;
+    }
+
+    function applyRobustDctScramble(data, w, h, prng, rev) {
+        const BS = 16, bw = Math.floor(w / BS), bh = Math.floor(h / BS), numBlocks = bw * bh;
+        if (numBlocks < 2) return data;
+        const perm = Array.from({ length: numBlocks }, (_, i) => i);
+        shuffleArray(perm, prng);
+        const blockOffsets = new Uint8Array(numBlocks);
+        for (let i = 0; i < numBlocks; i++) blockOffsets[i] = (Math.floor(prng() * 15) + 1) * 16;
+        const src = new Uint8Array(data), dst = new Uint8Array(src.length);
+        dst.set(src);
+        for (let bi = 0; bi < numBlocks; bi++) {
+            const srcIdx = rev ? perm[bi] : bi, dstIdx = rev ? bi : perm[bi];
+            const offset = blockOffsets[rev ? dstIdx : srcIdx];
+            const sx = (srcIdx % bw) * BS, sy = Math.floor(srcIdx / bw) * BS;
+            const dx = (dstIdx % bw) * BS, dy = Math.floor(dstIdx / bw) * BS;
+            for (let dyi = 0; dyi < BS; dyi++) {
+                const sRow = ((sy + dyi) * w + sx) * 4, dRow = ((dy + dyi) * w + dx) * 4;
+                for (let dxi = 0; dxi < BS; dxi++) {
+                    const si = sRow + dxi * 4, di = dRow + dxi * 4;
+                    if (!rev) {
+                        dst[di]     = (src[si] + offset) & 0xFF;
+                        dst[di + 1] = (src[si + 1] + offset) & 0xFF;
+                        dst[di + 2] = (src[si + 2] + offset) & 0xFF;
+                        dst[di + 3] = src[si + 3];
+                    } else {
+                        dst[di]     = (src[si] - offset) & 0xFF;
+                        dst[di + 1] = (src[si + 1] - offset) & 0xFF;
+                        dst[di + 2] = (src[si + 2] - offset) & 0xFF;
+                        dst[di + 3] = src[si + 3];
+                    }
+                }
+            }
+        }
+        return dst;
+    }
+
+    function applyQuantizeShuffle(data, w, h, prng, rev) {
+        if (!rev) {
+            const d = new Uint8Array(data);
+            for (let y = 0; y < h; y += 4) {
+                for (let x = 0; x < w; x += 4) {
+                    const i = (y * w + x) * 4, r = Math.round(d[i] / 48) * 48, g = Math.round(d[i + 1] / 48) * 48, b = Math.round(d[i + 2] / 48) * 48;
+                    for (let dy = 0; dy < 4 && y + dy < h; dy++) {
+                        for (let dx = 0; dx < 4 && x + dx < w; dx++) {
+                            const idx = ((y + dy) * w + (x + dx)) * 4; d[idx] = r; d[idx + 1] = g; d[idx + 2] = b;
+                        }
+                    }
+                }
+            }
+            data = d;
+        }
+        return applyXorShuffle(data, w, h, prng, rev);
+    }
+    function applyColorCrush(data, w, h, prng, rev) {
+        if (!rev) {
+            const d = new Uint8Array(data);
+            for (let i = 0; i < d.length; i += 4) { d[i] = Math.round(d[i] / 64) * 64; d[i + 1] = Math.round(d[i + 1] / 64) * 64; d[i + 2] = Math.round(d[i + 2] / 64) * 64; }
+            data = d;
+        }
+        return applyCatMap(data, w, h, prng, rev);
+    }
+    function applyBlurNoise(data, w, h, prng, rev) {
+        if (!rev) {
+            const d = new Uint8Array(data), tmp = new Uint8Array(d);
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const i = (y * w + x) * 4;
+                    for (let c = 0; c < 3; c++) d[i + c] = (tmp[i - 4 + c] + tmp[i + 4 + c] + tmp[i - w * 4 + c] + tmp[i + w * 4 + c]) >> 2;
+                }
+            }
+            for (let i = 0; i < d.length; i += 4) {
+                d[i] = Math.min(255, Math.max(0, d[i] + (prng() - 0.5) * 150));
+                d[i + 1] = Math.min(255, Math.max(0, d[i + 1] + (prng() - 0.5) * 150));
+                d[i + 2] = Math.min(255, Math.max(0, d[i + 2] + (prng() - 0.5) * 150));
+            }
+            data = d;
+        }
+        return applyWaveShift(data, w, h, prng, rev);
+    }
+    function applySaltPepper(data, w, h, prng, rev) {
+        if (!rev) {
+            const d32 = new Uint32Array(new Uint8Array(data).buffer.slice(0));
+            for (let i = 0; i < d32.length; i++) { const r = prng(); if (r < 0.1) d32[i] = 0xFF000000; else if (r < 0.2) d32[i] = 0xFFFFFFFF; }
+            data = new Uint8Array(d32.buffer);
+        }
+        return applyAffineMap(data, w, h, prng, rev);
+    }
+
+    function extractBitPlane(data, w, h, channel, bitIndex) {
+        const src = new Uint8Array(data), dst = new Uint8Array(w * h * 4), mask = 1 << bitIndex;
+        for (let i = 0; i < w * h; i++) {
+            const si = i * 4;
+            let bitVal = 0;
+            if (channel === 'r') {
+                bitVal = (src[si] & mask) ? 255 : 0; dst[si] = bitVal; dst[si + 1] = 0; dst[si + 2] = 0;
+            } else if (channel === 'g') {
+                bitVal = (src[si + 1] & mask) ? 255 : 0; dst[si] = 0; dst[si + 1] = bitVal; dst[si + 2] = 0;
+            } else if (channel === 'b') {
+                bitVal = (src[si + 2] & mask) ? 255 : 0; dst[si] = 0; dst[si + 1] = 0; dst[si + 2] = bitVal;
+            } else if (channel === 'gray') {
+                const gray = Math.round(0.299 * src[si] + 0.587 * src[si + 1] + 0.114 * src[si + 2]);
+                bitVal = (gray & mask) ? 255 : 0; dst[si] = bitVal; dst[si + 1] = bitVal; dst[si + 2] = bitVal;
+            } else {
+                dst[si] = (src[si] & mask) ? 255 : 0;
+                dst[si + 1] = (src[si + 1] & mask) ? 255 : 0;
+                dst[si + 2] = (src[si + 2] & mask) ? 255 : 0;
+            }
+            dst[si + 3] = 255;
+        }
+        return dst;
+    }
+
+    function stegoDct8(block) {
+        const N = 8, out = new Float64Array(N);
+        for (let k = 0; k < N; k++) {
+            let sum = 0;
+            for (let n = 0; n < N; n++) sum += block[n] * Math.cos(Math.PI * (2 * n + 1) * k / (2 * N));
+            out[k] = sum * (k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N));
+        }
+        return out;
+    }
+    function stegoIdct8(coef) {
+        const N = 8, out = new Float64Array(N);
+        for (let n = 0; n < N; n++) {
+            let sum = 0;
+            for (let k = 0; k < N; k++) sum += coef[k] * Math.cos(Math.PI * (2 * n + 1) * k / (2 * N)) * (k === 0 ? Math.sqrt(1 / N) : Math.sqrt(2 / N));
+            out[n] = sum;
+        }
+        return out;
+    }
+    function stegoDct2d(block) {
+        const tmp = new Float64Array(64);
+        for (let r = 0; r < 8; r++) {
+            const row = stegoDct8(block.subarray(r * 8, r * 8 + 8));
+            for (let c = 0; c < 8; c++) tmp[r * 8 + c] = row[c];
+        }
+        for (let c = 0; c < 8; c++) {
+            const col = new Float64Array(8);
+            for (let r = 0; r < 8; r++) col[r] = tmp[r * 8 + c];
+            const res = stegoDct8(col);
+            for (let r = 0; r < 8; r++) tmp[r * 8 + c] = res[r];
+        }
+        return tmp;
+    }
+    function stegoIdct2d(coef) {
+        const tmp = new Float64Array(64);
+        for (let c = 0; c < 8; c++) {
+            const col = new Float64Array(8);
+            for (let r = 0; r < 8; r++) col[r] = coef[r * 8 + c];
+            const res = stegoIdct8(col);
+            for (let r = 0; r < 8; r++) tmp[r * 8 + c] = res[r];
+        }
+        for (let r = 0; r < 8; r++) {
+            const row = stegoIdct8(tmp.subarray(r * 8, r * 8 + 8));
+            for (let c = 0; c < 8; c++) tmp[r * 8 + c] = row[c];
+        }
+        return tmp;
+    }
+
+    const DCT_STEGO = {
+        MID_FREQ: [[1, 2], [2, 1], [2, 3], [3, 2], [3, 3], [4, 4]],
+        QUANT_STEP: 60,
+        MAGIC_IMG: 0xDF,
+        MAGIC_FILE_0: 0x4F,
+        MAGIC_FILE_1: 0x42,
+
+        rgbToY(r, g, b) { return 0.299 * r + 0.587 * g + 0.114 * b; },
+
+        embedFile(hostPixels, hostW, hostH, fileBytes, fileName = 'secret.bin', mimeType = 'application/octet-stream', isEncrypted = false) {
+            const enc = new TextEncoder();
+            const safeName = (fileName || 'secret.bin').slice(0, 64);
+            const safeMime = (mimeType || 'application/octet-stream').slice(0, 32);
+            const nameBytes = enc.encode(safeName);
+            const mimeBytes = enc.encode(safeMime);
+            const nameLen = nameBytes.length, mimeLen = mimeBytes.length, fileLen = fileBytes.length;
+            let sum1 = 0, sum2 = 0;
+            for (let i = 0; i < fileLen; i++) { sum1 = (sum1 + fileBytes[i]) % 255; sum2 = (sum2 + sum1) % 255; }
+            const checksum = (sum2 << 8) | sum1;
+
+            const hdr = new Uint8Array(16);
+            hdr[0] = this.MAGIC_FILE_0; hdr[1] = this.MAGIC_FILE_1;
+            hdr[2] = nameLen; hdr[3] = mimeLen;
+            hdr[4] = fileLen & 0xFF; hdr[5] = (fileLen >> 8) & 0xFF;
+            hdr[6] = (fileLen >> 16) & 0xFF; hdr[7] = (fileLen >> 24) & 0xFF;
+            hdr[8] = checksum & 0xFF; hdr[9] = (checksum >> 8) & 0xFF;
+            hdr[10] = isEncrypted ? 0x02 : 0x01; hdr[11] = 0;
+            const hdrCheck = (nameLen * 31 + mimeLen * 17 + (fileLen & 0xFFFF) + 0x7E) & 0xFFFF;
+            hdr[12] = hdrCheck & 0xFF; hdr[13] = (hdrCheck >> 8) & 0xFF;
+            hdr[14] = 0x5A; hdr[15] = 0xA5;
+
+            const payload = new Uint8Array(nameLen + mimeLen + fileLen);
+            payload.set(nameBytes, 0); payload.set(mimeBytes, nameLen); payload.set(fileBytes, nameLen + mimeLen);
+
+            const hdrBits = [];
+            for (let i = 0; i < 16; i++) { for (let b = 0; b < 8; b++) hdrBits.push((hdr[i] >> b) & 1); }
+            const payBits = [];
+            for (let i = 0; i < payload.length; i++) { for (let b = 0; b < 8; b++) payBits.push((payload[i] >> b) & 1); }
+
+            const bw = Math.floor(hostW / 8), bh = Math.floor(hostH / 8);
+            const totalPositions = bw * bh * this.MID_FREQ.length;
+            const HDR_SLOTS = 2048;
+            if (totalPositions < HDR_SLOTS + 64) return false;
+
+            const availPaySlots = totalPositions - HDR_SLOTS;
+            const payRedundancy = Math.max(1, Math.floor(availPaySlots / Math.max(1, payBits.length)));
+
+            let posIdx = 0;
+            for (let by = 0; by + 8 <= hostH; by += 8) {
+                for (let bx = 0; bx + 8 <= hostW; bx += 8) {
+                    const block = new Float64Array(64);
+                    let avgY = 0;
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const idx = ((by + r) * hostW + (bx + c)) * 4;
+                            block[r * 8 + c] = this.rgbToY(hostPixels[idx], hostPixels[idx + 1], hostPixels[idx + 2]);
+                            avgY += block[r * 8 + c];
+                        }
+                    }
+                    avgY /= 64;
+                    const Q = this.QUANT_STEP * (0.6 + (avgY / 255) * 0.5);
+                    const dct = stegoDct2d(block);
+
+                    for (let fi = 0; fi < this.MID_FREQ.length; fi++) {
+                        let bit = 0;
+                        if (posIdx < HDR_SLOTS) {
+                            bit = hdrBits[posIdx % 128];
+                        } else {
+                            const pOffset = posIdx - HDR_SLOTS;
+                            if (payBits.length > 0) {
+                                const pBitIdx = Math.floor(pOffset / payRedundancy) % payBits.length;
+                                bit = payBits[pBitIdx];
+                            }
+                        }
+                        const [fr, fc] = this.MID_FREQ[fi];
+                        const coef = dct[fr * 8 + fc];
+                        const quantized = Math.round(coef / Q) * Q;
+                        dct[fr * 8 + fc] = quantized + (bit ? Q / 3 : -Q / 3);
+                        posIdx++;
+                    }
+
+                    const spatial = stegoIdct2d(dct);
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const idx = ((by + r) * hostW + (bx + c)) * 4;
+                            const oldY = this.rgbToY(hostPixels[idx], hostPixels[idx + 1], hostPixels[idx + 2]);
+                            const dy = spatial[r * 8 + c] - oldY;
+                            hostPixels[idx]     = Math.max(0, Math.min(255, Math.round(hostPixels[idx] + dy)));
+                            hostPixels[idx + 1] = Math.max(0, Math.min(255, Math.round(hostPixels[idx + 1] + dy)));
+                            hostPixels[idx + 2] = Math.max(0, Math.min(255, Math.round(hostPixels[idx + 2] + dy)));
+                        }
+                    }
+                }
+            }
+            return true;
+        },
+
+        embed(hostPixels, hostW, hostH, secretPixels, secretW, secretH) {
+            const bits = [];
+            const checksum = (secretW * secretH + 0x5A) & 0xFF;
+            for (let i = 0; i < 8; i++) bits.push((this.MAGIC_IMG >> i) & 1);
+            for (let i = 0; i < 8; i++) bits.push((secretW >> i) & 1);
+            for (let i = 0; i < 8; i++) bits.push((secretH >> i) & 1);
+            for (let i = 0; i < 8; i++) bits.push((checksum >> i) & 1);
+            for (let p = 0; p < secretW * secretH; p++) {
+                const r4 = secretPixels[p * 4] >> 4, g4 = secretPixels[p * 4 + 1] >> 4, b4 = secretPixels[p * 4 + 2] >> 4;
+                for (let i = 0; i < 4; i++) bits.push((r4 >> i) & 1);
+                for (let i = 0; i < 4; i++) bits.push((g4 >> i) & 1);
+                for (let i = 0; i < 4; i++) bits.push((b4 >> i) & 1);
+            }
+            const totalBits = bits.length;
+            let posIdx = 0;
+            for (let by = 0; by + 8 <= hostH; by += 8) {
+                for (let bx = 0; bx + 8 <= hostW; bx += 8) {
+                    const block = new Float64Array(64);
+                    let avgY = 0;
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const idx = ((by + r) * hostW + (bx + c)) * 4;
+                            block[r * 8 + c] = this.rgbToY(hostPixels[idx], hostPixels[idx + 1], hostPixels[idx + 2]);
+                            avgY += block[r * 8 + c];
+                        }
+                    }
+                    avgY /= 64;
+                    const Q = this.QUANT_STEP * (0.5 + (avgY / 255) * 0.6);
+                    const dct = stegoDct2d(block);
+                    for (let fi = 0; fi < this.MID_FREQ.length; fi++) {
+                        const bitIdx = posIdx % totalBits, [fr, fc] = this.MID_FREQ[fi], bit = bits[bitIdx];
+                        const coef = dct[fr * 8 + fc], quantized = Math.round(coef / Q) * Q;
+                        dct[fr * 8 + fc] = quantized + (bit ? Q / 3 : -Q / 3);
+                        posIdx++;
+                    }
+                    const spatial = stegoIdct2d(dct);
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const idx = ((by + r) * hostW + (bx + c)) * 4;
+                            const oldY = this.rgbToY(hostPixels[idx], hostPixels[idx + 1], hostPixels[idx + 2]);
+                            const dy = spatial[r * 8 + c] - oldY;
+                            hostPixels[idx]     = Math.max(0, Math.min(255, Math.round(hostPixels[idx] + dy)));
+                            hostPixels[idx + 1] = Math.max(0, Math.min(255, Math.round(hostPixels[idx + 1] + dy)));
+                            hostPixels[idx + 2] = Math.max(0, Math.min(255, Math.round(hostPixels[idx + 2] + dy)));
+                        }
+                    }
+                }
+            }
+        },
+
+        extract(hostPixels, hostW, hostH) {
+            const bw = Math.floor(hostW / 8), bh = Math.floor(hostH / 8);
+            const numFreqs = this.MID_FREQ.length;
+            const totalPositions = bw * bh * numFreqs;
+            if (totalPositions < 64) return null;
+
+            const allBits = new Uint8Array(totalPositions);
+            let posIdx = 0;
+            for (let by = 0; by + 8 <= hostH; by += 8) {
+                for (let bx = 0; bx + 8 <= hostW; bx += 8) {
+                    const block = new Float64Array(64);
+                    let avgY = 0;
+                    for (let r = 0; r < 8; r++) {
+                        for (let c = 0; c < 8; c++) {
+                            const idx = ((by + r) * hostW + (bx + c)) * 4;
+                            block[r * 8 + c] = this.rgbToY(hostPixels[idx], hostPixels[idx + 1], hostPixels[idx + 2]);
+                            avgY += block[r * 8 + c];
+                        }
+                    }
+                    avgY /= 64;
+                    const Q = this.QUANT_STEP * (0.6 + (avgY / 255) * 0.5);
+                    const dct = stegoDct2d(block);
+                    for (let fi = 0; fi < numFreqs; fi++) {
+                        const [fr, fc] = this.MID_FREQ[fi];
+                        const coef = dct[fr * 8 + fc];
+                        const quantized = Math.round(coef / Q) * Q;
+                        allBits[posIdx++] = (coef - quantized) > 0 ? 1 : 0;
+                    }
+                }
+            }
+
+            // CHECK 1: File Format 'OB'
+            const HDR_SLOTS = 2048;
+            if (totalPositions >= HDR_SLOTS + 64) {
+                const hdr = new Uint8Array(16);
+                for (let bi = 0; bi < 128; bi++) {
+                    let ones = 0, zeros = 0;
+                    for (let rep = 0; rep < 16; rep++) {
+                        const pos = rep * 128 + bi;
+                        if (pos < HDR_SLOTS && pos < totalPositions) {
+                            if (allBits[pos]) ones++; else zeros++;
+                        }
+                    }
+                    const bitVal = ones > zeros ? 1 : 0;
+                    hdr[Math.floor(bi / 8)] |= (bitVal << (bi % 8));
+                }
+
+                if (hdr[0] === this.MAGIC_FILE_0 && hdr[1] === this.MAGIC_FILE_1 && hdr[14] === 0x5A && hdr[15] === 0xA5) {
+                    const nameLen = hdr[2], mimeLen = hdr[3];
+                    const fileLen = (hdr[4]) | (hdr[5] << 8) | (hdr[6] << 16) | (hdr[7] << 24);
+                    const expectedCs = (hdr[8]) | (hdr[9] << 8);
+                    const isEncrypted = (hdr[10] & 0x02) !== 0;
+                    const hdrCheck = (hdr[12]) | (hdr[13] << 8);
+                    const calcHdrCheck = (nameLen * 31 + mimeLen * 17 + (fileLen & 0xFFFF) + 0x7E) & 0xFFFF;
+
+                    if (hdrCheck === calcHdrCheck && fileLen >= 0 && fileLen < 50000000) {
+                        const totalPayBytes = nameLen + mimeLen + fileLen;
+                        const totalPayBits = totalPayBytes * 8;
+                        const availPaySlots = totalPositions - HDR_SLOTS;
+                        const payRedundancy = Math.max(1, Math.floor(availPaySlots / Math.max(1, totalPayBits)));
+
+                        const payBytes = new Uint8Array(totalPayBytes);
+                        for (let pbi = 0; pbi < totalPayBits; pbi++) {
+                            let ones = 0, zeros = 0;
+                            for (let rep = 0; rep < payRedundancy; rep++) {
+                                const pos = HDR_SLOTS + pbi * payRedundancy + rep;
+                                if (pos < totalPositions) {
+                                    if (allBits[pos]) ones++; else zeros++;
+                                }
+                            }
+                            const bitVal = ones > zeros ? 1 : 0;
+                            payBytes[Math.floor(pbi / 8)] |= (bitVal << (pbi % 8));
+                        }
+
+                        const dec = new TextDecoder();
+                        const fileName = dec.decode(payBytes.subarray(0, nameLen)) || 'secret.bin';
+                        const mimeType = dec.decode(payBytes.subarray(nameLen, nameLen + mimeLen)) || 'application/octet-stream';
+                        const fileData = payBytes.subarray(nameLen + mimeLen);
+
+                        let sum1 = 0, sum2 = 0;
+                        for (let i = 0; i < fileData.length; i++) { sum1 = (sum1 + fileData[i]) % 255; sum2 = (sum2 + sum1) % 255; }
+                        const calcCs = (sum2 << 8) | sum1;
+
+                        return {
+                            type: 'file',
+                            fileName,
+                            mimeType,
+                            size: fileLen,
+                            data: fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.byteLength),
+                            encrypted: isEncrypted,
+                            checksumValid: (calcCs === expectedCs)
+                        };
+                    }
+                }
+            }
+
+            // CHECK 2: Thumbnail format
+            for (let side = 4; side <= 255; side++) {
+                const sw = side, sh = side, totalBits = 32 + sw * sh * 12;
+                const redundancy = Math.floor(totalPositions / totalBits);
+                if (redundancy < 2) break;
+
+                const hdr = new Uint8Array(32);
+                for (let bi = 0; bi < 32; bi++) {
+                    let ones = 0, zeros = 0;
+                    for (let rep = 0; rep < redundancy; rep++) {
+                        const pos = bi + rep * totalBits;
+                        if (pos < totalPositions) { if (allBits[pos]) ones++; else zeros++; }
+                    }
+                    hdr[bi] = ones > zeros ? 1 : 0;
+                }
+                let magic = 0;
+                for (let i = 0; i < 8; i++) magic |= hdr[i] << i;
+                if (magic !== this.MAGIC_IMG) continue;
+
+                let rsw = 0, rsh = 0, cs = 0;
+                for (let i = 0; i < 8; i++) rsw |= hdr[8 + i] << i;
+                for (let i = 0; i < 8; i++) rsh |= hdr[16 + i] << i;
+                for (let i = 0; i < 8; i++) cs  |= hdr[24 + i] << i;
+                if (rsw !== sw || rsh !== sh || cs !== ((sw * sh + 0x5A) & 0xFF)) continue;
+
+                const secretPixels = new Uint8Array(sw * sh * 4);
+                for (let pbi = 0; pbi < sw * sh * 12; pbi++) {
+                    const bi = 32 + pbi;
+                    let ones = 0, zeros = 0;
+                    for (let rep = 0; rep < redundancy; rep++) {
+                        const pos = bi + rep * totalBits;
+                        if (pos < totalPositions) { if (allBits[pos]) ones++; else zeros++; }
+                    }
+                    const pixelIdx = Math.floor(pbi / 12), channelBit = pbi % 12, channel = Math.floor(channelBit / 4), bitPos = channelBit % 4;
+                    secretPixels[pixelIdx * 4 + channel] |= (ones > zeros ? 1 : 0) << bitPos;
+                }
+                for (let p = 0; p < sw * sh; p++) {
+                    for (let ch = 0; ch < 3; ch++) { const v = secretPixels[p * 4 + ch]; secretPixels[p * 4 + ch] = (v << 4) | v; }
+                    secretPixels[p * 4 + 3] = 255;
+                }
+                return { type: 'image', data: secretPixels.buffer, width: sw, height: sh };
+            }
+            return null;
+        }
+    };
+
+    const ALGOS = {
+        'none': (d) => new Uint8Array(d),
+        'xor-shuffle': applyXorShuffle, 'logistic-xor': applyLogisticXOR, 'cat-map': applyCatMap,
+        'baker-map': applyBakerMap, 'affine-map': applyAffineMap, 'wave-shift': applyWaveShift,
+        'prime-scatter': applyPrimeScatter, 'rgb-shift': applyRgbShift, 'hilbert': applyHilbert,
+        'spiral': applySpiral, 'zigzag': applyZigzag, 'chirikov': applyChirikov,
+        'henon': applyHenon, 'rubik': applyRubik,
+        'block-shuffle-8': (d, w, h, p, r) => applyBlockShuffleWorker(d, w, h, p, r, 8),
+        'block-shuffle-16': (d, w, h, p, r) => applyBlockShuffleWorker(d, w, h, p, r, 16),
+        'robust-dct-scramble': applyRobustDctScramble,
+        'dfws': applyDFWSWorker, 'quantize-shuffle': applyQuantizeShuffle,
+        'color-crush': applyColorCrush, 'blur-noise': applyBlurNoise, 'salt-pepper': applySaltPepper
+    };
+
+    return {
+        run(params) {
+            const { type, algo, data, width, height, seed, reverse, intensity, secretImage, secretFile, extractSecret, channel, bitIndex } = params;
+            if (type === 'bit-plane' || algo === 'bit-plane') {
+                const res = extractBitPlane(data, width, height, channel || 'gray', typeof bitIndex === 'number' ? bitIndex : 0);
+                return { result: res.buffer };
+            }
+            if (algo === 'dct-extract') {
+                const extracted = DCT_STEGO.extract(new Uint8Array(data), width, height);
+                return { result: data, extractedSecret: extracted };
+            }
+            const fn = ALGOS[algo] || ALGOS['none'];
+            const prng = getPRNG(seed || 'public');
+            let result;
+            let extracted = null;
+            if (reverse && extractSecret) {
+                const pixels = new Uint8Array(data);
+                extracted = DCT_STEGO.extract(pixels, width, height);
+                result = fn(pixels, width, height, prng, true);
+            } else {
+                result = fn(new Uint8Array(data), width, height, prng, reverse);
+            }
+            if (!reverse && secretFile) {
+                DCT_STEGO.embedFile(result, width, height, new Uint8Array(secretFile.data), secretFile.name, secretFile.mime, secretFile.encrypted);
+            } else if (!reverse && secretImage) {
+                DCT_STEGO.embed(result, width, height, new Uint8Array(secretImage.data), secretImage.width, secretImage.height);
+            }
+            if (typeof intensity === 'number' && intensity < 1 && !reverse) {
+                const orig = new Uint8Array(data), blended = new Uint8Array(result.length);
+                for (let i = 0; i < result.length; i++) {
+                    if ((i + 1) % 4 === 0) blended[i] = orig[i];
+                    else blended[i] = Math.round(orig[i] * (1 - intensity) + result[i] * intensity);
+                }
+                result = blended;
+            }
+            const resObj = { result: result.buffer };
+            if (extracted) resObj.extractedSecret = extracted;
+            return resObj;
+        }
+    };
+})();
+
+class WorkerBridge {
+    constructor() {
+        this.worker = null;
+        this.pending = new Map();
+        this.reqId = 0;
+        this.init();
+    }
+
+    init() {
+        try {
+            if (location.protocol === 'file:') {
+                this.worker = null;
+                console.info('Protocole local file:// : moteur d\'exécution in-thread actif.');
+                return;
+            }
+            this.worker = new Worker('worker.js');
+            this.worker.onmessage = (e) => {
+                const { id, result, extractedSecret, error } = e.data;
+                const resolver = this.pending.get(id);
+                if (!resolver) return;
+                this.pending.delete(id);
+                if (error) resolver.reject(new Error(error));
+                else resolver.resolve({ result, extractedSecret });
+            };
+            this.worker.onerror = () => {
+                this.worker = null;
+            };
+        } catch {
+            this.worker = null;
+        }
+    }
+
+    async send(params, transfers = []) {
+        if (!this.worker) {
+            return InThreadExecutor.run(params);
+        }
+        return new Promise((resolve, reject) => {
+            const id = ++this.reqId;
+            this.pending.set(id, { resolve, reject });
+            try {
+                this.worker.postMessage({ id, ...params }, transfers);
+            } catch {
+                this.pending.delete(id);
+                try {
+                    resolve(InThreadExecutor.run(params));
+                } catch (e2) {
+                    reject(e2);
+                }
+            }
+        });
+    }
+}
+
+// ============================================================================
+// 4. AUDIO CHIMES (Synthesized Gentle Feedback)
+// ============================================================================
+const SoundManager = {
+    enabled: true,
+    ctx: null,
+
+    play(type = 'success') {
+        if (!this.enabled) return;
+        try {
+            if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            const now = this.ctx.currentTime;
+            if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.14); // G5
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+                osc.start(now);
+                osc.stop(now + 0.28);
+            } else {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(329.63, now); // E4
+                osc.frequency.exponentialRampToValueAtTime(220.00, now + 0.18); // A3
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+        } catch {
+            // Audio policy blocked
+        }
+    }
+};
+
+// ============================================================================
+// 5. STEGANOGRAPHY & WATERMARK ENGINES (LSB & Frequency SynthID)
+// ============================================================================
+const StegoEngine = {
+    encodeLSB(imgData, payloadBytes) {
         const bits = [];
         const len = payloadBytes.length;
-        for(let i=0; i<32; i++) bits.push((len >> i) & 1);
-        for(let i=0; i<len; i++) {
+        for (let i = 0; i < 32; i++) bits.push((len >> i) & 1);
+        for (let i = 0; i < len; i++) {
             const b = payloadBytes[i];
-            for(let j=0; j<8; j++) bits.push((b >> j) & 1);
+            for (let j = 0; j < 8; j++) bits.push((b >> j) & 1);
         }
         const maxBits = (imgData.data.length / 4) * 3;
-        if (bits.length > maxBits) throw new Error("Signature trop longue pour la stéganographie LSB.");
+        if (bits.length > maxBits) throw new Error('Contenu trop volumineux pour la stéganographie LSB.');
 
         let bitIndex = 0;
-        for(let i=0; i<imgData.data.length && bitIndex < bits.length; i++) {
-            if ((i + 1) % 4 === 0) continue; 
+        for (let i = 0; i < imgData.data.length && bitIndex < bits.length; i++) {
+            if ((i + 1) % 4 === 0) continue; // skip alpha
             imgData.data[i] = (imgData.data[i] & ~1) | bits[bitIndex];
             bitIndex++;
         }
-    }
+    },
 
-    function decodeLSB(imgData) {
+    decodeLSB(imgData) {
         let len = 0;
         let dataIndex = 0;
-        for(let i=0; i<32; i++) {
-            while((dataIndex + 1) % 4 === 0) dataIndex++;
+        for (let i = 0; i < 32; i++) {
+            while ((dataIndex + 1) % 4 === 0) dataIndex++;
             if (dataIndex >= imgData.data.length) return null;
             const bit = imgData.data[dataIndex] & 1;
             len |= (bit << i);
             dataIndex++;
         }
-        if (len <= 0 || len > 5000000) return null;
+        if (len <= 0 || len > 10000000) return null;
+
         const payload = new Uint8Array(len);
-        for(let i=0; i<len; i++) {
+        for (let i = 0; i < len; i++) {
             let b = 0;
-            for(let j=0; j<8; j++) {
-                while((dataIndex + 1) % 4 === 0) dataIndex++;
+            for (let j = 0; j < 8; j++) {
+                while ((dataIndex + 1) % 4 === 0) dataIndex++;
                 if (dataIndex >= imgData.data.length) return null;
                 const bit = imgData.data[dataIndex] & 1;
                 b |= (bit << j);
@@ -195,2394 +1292,1666 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return payload;
     }
+};
 
-    // --- MATH PRNG & UTILS ---
-    function xmur3(str) {
-        let h = 1779033703 ^ str.length;
-        for(let i = 0; i < str.length; i++) {
-            h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
-            h = h << 13 | h >>> 19;
-        }
-        return function() {
-            h = Math.imul(h ^ (h >>> 16), 2246822507);
-            h = Math.imul(h ^ (h >>> 13), 3266489909);
-            return (h ^= h >>> 16) >>> 0;
-        }
-    }
-    function mulberry32(a) {
-        return function() {
-            var t = a += 0x6D2B79F5;
-            t = Math.imul(t ^ t >>> 15, t | 1);
-            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-            return ((t ^ t >>> 14) >>> 0) / 4294967296;
-        }
-    }
-    function getPRNG(seedStr) { return mulberry32(xmur3(seedStr)()); }
-    
-    function shuffleArray(array, prng) {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(prng() * (i + 1));
-            const temp = array[i];
-            array[i] = array[j];
-            array[j] = temp;
-        }
-    }
-    const mod = (n, m) => ((n % m) + m) % m;
+// ============================================================================
+// 6. MAIN APPLICATION CONTROLLER
+// ============================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const worker = new WorkerBridge();
 
-    // --- 100% REVERSIBLE MATH ALGORITHMS ---
-    function applyXorShuffle(imgData, width, height, prng, reverse = false) {
-        const totalPixels = width * height;
-        const xorStream = new Uint8Array(totalPixels * 3);
-        for(let i=0; i<xorStream.length; i++) xorStream[i] = Math.floor(prng() * 256);
-        const indices = new Int32Array(totalPixels);
-        for(let i=0; i<totalPixels; i++) indices[i] = i;
-        shuffleArray(indices, prng);
-        
-        const srcData = new Uint8Array(imgData.data);
-        const dstData = new Uint8Array(imgData.data.length);
-        
-        if (!reverse) {
-            for(let i=0; i<totalPixels; i++) {
-                const j = indices[i];
-                dstData[j*4] = srcData[i*4] ^ xorStream[i*3];
-                dstData[j*4+1] = srcData[i*4+1] ^ xorStream[i*3+1];
-                dstData[j*4+2] = srcData[i*4+2] ^ xorStream[i*3+2];
-                dstData[j*4+3] = srcData[i*4+3];
-            }
-        } else {
-            for(let i=0; i<totalPixels; i++) {
-                const j = indices[i];
-                dstData[i*4] = srcData[j*4] ^ xorStream[i*3];
-                dstData[i*4+1] = srcData[j*4+1] ^ xorStream[i*3+1];
-                dstData[i*4+2] = srcData[j*4+2] ^ xorStream[i*3+2];
-                dstData[i*4+3] = srcData[j*4+3];
-            }
-        }
-        imgData.data.set(dstData);
-    }
+    // DOM Elements
+    const tabs = document.querySelectorAll('.tab-btn');
+    const viewPanels = document.querySelectorAll('.view-panel');
 
-    function applyLogisticXOR(imgData, width, height, prng, reverse = false) {
-        const totalPixels = width * height;
-        const xorStream = new Uint8Array(totalPixels * 3);
-        let x = prng() * 0.5 + 0.2;
-        const r = 3.99 + prng() * 0.009;
-        for(let i=0; i<xorStream.length; i++) {
-            x = r * x * (1 - x);
-            xorStream[i] = Math.floor(x * 256);
-        }
-        const srcData = new Uint8Array(imgData.data);
-        const dstData = new Uint8Array(imgData.data.length);
-        for(let i=0; i<imgData.data.length; i++) {
-            if ((i + 1) % 4 === 0) dstData[i] = srcData[i];
-            else {
-                const pIdx = Math.floor(i / 4);
-                const cIdx = i % 4;
-                dstData[i] = srcData[i] ^ xorStream[pIdx * 3 + cIdx];
-            }
-        }
-        imgData.data.set(dstData);
-    }
+    // Tab 1: Obfuscation
+    const obfDropZone = document.getElementById('obf-dropzone');
+    const obfFileInput = document.getElementById('obf-file-input');
+    const dropEmptyUI = document.getElementById('drop-empty-ui');
+    const previewViewport = document.getElementById('preview-viewport');
+    const mainPreviewImg = document.getElementById('main-preview-img');
+    const viewportToolbar = document.getElementById('viewport-toolbar');
 
-    function applyCatMap(imgData, width, height, prng, reverse = false) {
-        const iterations = 5 + Math.floor(prng() * 15);
-        const srcData = new Uint32Array(imgData.data.buffer);
-        const dstData = new Uint32Array(width * height);
-        const mapping = new Int32Array(width * height);
-        for(let i=0; i<width*height; i++) mapping[i] = i;
+    const compareSliderBox = document.getElementById('compare-slider-box');
+    const compareCanvas = document.getElementById('compare-canvas');
+    const compareHandle = document.getElementById('compare-handle');
 
-        for(let iter=0; iter<iterations; iter++) {
-            const nextMap = new Int32Array(width * height);
-            for(let y=0; y<height; y++) {
-                for(let x=0; x<width; x++) {
-                    if (!reverse) {
-                        const nx = (x + y) % width;
-                        const ny = (nx + y) % height;
-                        nextMap[ny * width + nx] = mapping[y * width + x];
-                    } else {
-                        const py = mod(y - x, height);
-                        const px = mod(x - py, width);
-                        nextMap[py * width + px] = mapping[y * width + x];
-                    }
-                }
-            }
-            mapping.set(nextMap);
-        }
-        for(let i=0; i<width*height; i++) dstData[i] = srcData[mapping[i]];
-        imgData.data.set(new Uint8Array(dstData.buffer));
-    }
+    const algoSelect = document.getElementById('algo-select');
+    const algoGallery = document.getElementById('algo-gallery');
+    const algoTypeTag = document.getElementById('algo-type-tag');
 
-    function applyBakerMap(imgData, width, height, prng, reverse = false) {
-        const total = width * height;
-        const srcData = new Uint32Array(imgData.data.buffer);
-        const dstData = new Uint32Array(total);
-        const iterations = 10 + Math.floor(prng() * 10);
-        const mapping = new Int32Array(total);
-        for(let i=0; i<total; i++) mapping[i] = i;
+    const obfPwd = document.getElementById('obf-pwd');
+    const togglePwdVisibility = document.getElementById('toggle-pwd-visibility');
+    const robustModeCb = document.getElementById('robust-mode');
 
-        for(let iter=0; iter<iterations; iter++) {
-            const nextMap = new Int32Array(total);
-            if (!reverse) {
-                let left = 0, right = Math.floor((total + 1) / 2);
-                for(let i=0; i<total; i++) {
-                    if (i % 2 === 0) nextMap[left++] = mapping[i];
-                    else nextMap[right++] = mapping[i];
-                }
-            } else {
-                const half = Math.floor((total + 1) / 2);
-                for(let i=0; i<total; i++) {
-                    if (i < half) nextMap[i * 2] = mapping[i];
-                    else nextMap[(i - half) * 2 + 1] = mapping[i];
-                }
-            }
-            mapping.set(nextMap);
-        }
-        for(let i=0; i<total; i++) dstData[i] = srcData[mapping[i]];
-        imgData.data.set(new Uint8Array(dstData.buffer));
-    }
+    const advAccordion = document.getElementById('adv-accordion');
+    const advTrigger = document.getElementById('adv-trigger');
+    const stripExifCb = document.getElementById('strip-exif');
+    const embedOriginalCb = document.getElementById('embed-original-cb');
+    const dctPixelCb = document.getElementById('dct-pixel-cb');
+    const embedSecretFile = document.getElementById('embed-secret-file');
 
-    function applyAffineMap(imgData, width, height, prng, reverse = false) {
-        const b = Math.floor(prng() * 20) + 1;
-        const c = Math.floor(prng() * 20) + 1;
-        const srcData = new Uint32Array(imgData.data.buffer);
-        const dstData = new Uint32Array(width * height);
-        for(let y=0; y<height; y++) {
-            for(let x=0; x<width; x++) {
-                if (!reverse) {
-                    const nx = mod(x + b * y, width);
-                    const ny = mod(c * nx + y, height);
-                    dstData[ny * width + nx] = srcData[y * width + x];
-                } else {
-                    const py = mod(y - c * x, height);
-                    const px = mod(x - b * py, width);
-                    dstData[py * width + px] = srcData[y * width + x];
-                }
-            }
-        }
-        imgData.data.set(new Uint8Array(dstData.buffer));
-    }
+    const watermarkToggle = document.getElementById('watermark-toggle');
+    const watermarkBox = document.getElementById('watermark-box');
+    const watermarkText = document.getElementById('watermark-text');
 
-    function applyWaveShift(imgData, width, height, prng, reverse = false) {
-        const freqX = 10 + prng() * 50; const ampX = 10 + prng() * 100;
-        const freqY = 10 + prng() * 50; const ampY = 10 + prng() * 100;
-        const src = new Uint32Array(imgData.data.buffer);
-        const dst = new Uint32Array(width * height);
-        
-        if (!reverse) {
-            const temp = new Uint32Array(width * height);
-            for(let y=0; y<height; y++) {
-                const shift = Math.floor(Math.sin(y / freqY) * ampX);
-                for(let x=0; x<width; x++) {
-                    const nx = mod(x + shift, width);
-                    temp[y * width + nx] = src[y * width + x];
-                }
-            }
-            for(let x=0; x<width; x++) {
-                const shift = Math.floor(Math.cos(x / freqX) * ampY);
-                for(let y=0; y<height; y++) {
-                    const ny = mod(y + shift, height);
-                    dst[ny * width + x] = temp[y * width + x];
-                }
-            }
-        } else {
-            const temp = new Uint32Array(width * height);
-            for(let x=0; x<width; x++) {
-                const shift = Math.floor(Math.cos(x / freqX) * ampY);
-                for(let y=0; y<height; y++) {
-                    const ny = mod(y - shift, height);
-                    temp[ny * width + x] = src[y * width + x];
-                }
-            }
-            for(let y=0; y<height; y++) {
-                const shift = Math.floor(Math.sin(y / freqY) * ampX);
-                for(let x=0; x<width; x++) {
-                    const nx = mod(x - shift, width);
-                    dst[y * width + nx] = temp[y * width + x];
-                }
-            }
-        }
-        imgData.data.set(new Uint8Array(dst.buffer));
-    }
+    const glitchIntensity = document.getElementById('glitch-intensity');
+    const glitchValText = document.getElementById('glitch-val-text');
 
-    function gcd(a, b) {
-        while (b !== 0n) { let t = b; b = a % b; a = t; }
-        return a;
-    }
-    function modInverse(a, m) {
-        let m0 = m, y = 0n, x = 1n;
-        if (m === 1n) return 0n;
-        while (a > 1n) {
-            let q = a / m, t = m;
-            m = a % m; a = t; t = y;
-            y = x - q * y; x = t;
-        }
-        if (x < 0n) x += m0;
-        return x;
-    }
-    function applyPrimeScatter(imgData, width, height, prng, reverse = false) {
-        const N = BigInt(width * height);
-        if(N === 0n) return;
-        let P = BigInt(Math.floor(prng() * 1000000) + 1000000);
-        while (gcd(P, N) !== 1n) { P += 1n; }
-        const invP = modInverse(P, N);
-        const srcData = new Uint32Array(imgData.data.buffer);
-        const dstData = new Uint32Array(width * height);
-        const factor = reverse ? invP : P;
-        for(let i=0n; i<N; i++) {
-            const target = Number((i * factor) % N);
-            dstData[target] = srcData[Number(i)];
-        }
-        imgData.data.set(new Uint8Array(dstData.buffer));
-    }
+    const gaugeCircle = document.getElementById('gauge-circle');
+    const gaugePercent = document.getElementById('gauge-percent');
+    const gaugeStatusTitle = document.getElementById('gauge-status-title');
+    const gaugeStatusDesc = document.getElementById('gauge-status-desc');
 
-    function applyRgbShift(imgData, width, height, prng, reverse = false) {
-        const dr_x = Math.floor(prng() * width); const dr_y = Math.floor(prng() * height);
-        const dg_x = Math.floor(prng() * width); const dg_y = Math.floor(prng() * height);
-        const db_x = Math.floor(prng() * width); const db_y = Math.floor(prng() * height);
-        const src = new Uint8Array(imgData.data);
-        const dst = new Uint8Array(imgData.data.length);
-        
-        for(let y=0; y<height; y++) {
-            for(let x=0; x<width; x++) {
-                const i = (y * width + x) * 4;
-                const rx = mod(reverse ? x - dr_x : x + dr_x, width);
-                const ry = mod(reverse ? y - dr_y : y + dr_y, height);
-                const gx = mod(reverse ? x - dg_x : x + dg_x, width);
-                const gy = mod(reverse ? y - dg_y : y + dg_y, height);
-                const bx = mod(reverse ? x - db_x : x + db_x, width);
-                const by = mod(reverse ? y - db_y : y + db_y, height);
-                
-                if (!reverse) {
-                    dst[(ry * width + rx) * 4] = src[i];
-                    dst[(gy * width + gx) * 4 + 1] = src[i+1];
-                    dst[(by * width + bx) * 4 + 2] = src[i+2];
-                } else {
-                    dst[i] = src[(ry * width + rx) * 4];
-                    dst[i+1] = src[(gy * width + gx) * 4 + 1];
-                    dst[i+2] = src[(by * width + bx) * 4 + 2];
-                }
-                dst[i+3] = src[i+3];
-            }
-        }
-        imgData.data.set(dst);
-    }
+    const btnRunObfuscate = document.getElementById('btn-run-obfuscate');
+    const exportFormatSelect = document.getElementById('export-format');
+    const integrityCard = document.getElementById('integrity-card');
+    const hashValue = document.getElementById('hash-value');
+    const btnCopyHash = document.getElementById('btn-copy-hash');
 
-    // --- DESTRUCTIVES ---
-    function applyQuantizeShuffle(imgData, width, height, prng, reverse = false) {
-        if (!reverse) {
-            const data = imgData.data;
-            for (let y = 0; y < height; y += 4) {
-                for (let x = 0; x < width; x += 4) {
-                    const i = (y * width + x) * 4;
-                    const r = Math.round(data[i] / 48) * 48;
-                    const g = Math.round(data[i+1] / 48) * 48;
-                    const b = Math.round(data[i+2] / 48) * 48;
-                    for (let dy = 0; dy < 4 && y + dy < height; dy++) {
-                        for (let dx = 0; dx < 4 && x + dx < width; dx++) {
-                            const idx = ((y + dy) * width + (x + dx)) * 4;
-                            data[idx] = r; data[idx+1] = g; data[idx+2] = b;
-                        }
-                    }
-                }
-            }
-        }
-        applyXorShuffle(imgData, width, height, prng, reverse);
-    }
-    
-    function applyColorCrush(imgData, width, height, prng, reverse = false) {
-        if (!reverse) {
-            const data = imgData.data;
-            for(let i=0; i<data.length; i+=4) {
-                data[i] = Math.round(data[i] / 64) * 64;
-                data[i+1] = Math.round(data[i+1] / 64) * 64;
-                data[i+2] = Math.round(data[i+2] / 64) * 64;
-            }
-        }
-        applyCatMap(imgData, width, height, prng, reverse);
-    }
-    
-    function applyBlurNoise(imgData, width, height, prng, reverse = false) {
-        if (!reverse) {
-            const data = imgData.data;
-            const tmp = new Uint8Array(data);
-            for(let y=1; y<height-1; y++) {
-                for(let x=1; x<width-1; x++) {
-                    const i = (y * width + x) * 4;
-                    for(let c=0; c<3; c++) {
-                        data[i+c] = (tmp[i-4+c] + tmp[i+4+c] + tmp[i-width*4+c] + tmp[i+width*4+c]) >> 2;
-                    }
-                }
-            }
-            for(let i=0; i<data.length; i+=4) {
-                data[i] = Math.min(255, Math.max(0, data[i] + (prng()-0.5)*150));
-                data[i+1] = Math.min(255, Math.max(0, data[i+1] + (prng()-0.5)*150));
-                data[i+2] = Math.min(255, Math.max(0, data[i+2] + (prng()-0.5)*150));
-            }
-        }
-        applyWaveShift(imgData, width, height, prng, reverse);
-    }
+    const batchTray = document.getElementById('batch-tray');
+    const batchCounter = document.getElementById('batch-counter');
+    const batchStrip = document.getElementById('batch-strip');
+    const btnClearBatch = document.getElementById('btn-clear-batch');
 
-    function applySaltPepper(imgData, width, height, prng, reverse = false) {
-        if (!reverse) {
-            const data = new Uint32Array(imgData.data.buffer);
-            for(let i=0; i<data.length; i++) {
-                const rand = prng();
-                if (rand < 0.1) data[i] = 0xFF000000;
-                else if (rand < 0.2) data[i] = 0xFFFFFFFF;
-            }
-        }
-        applyAffineMap(imgData, width, height, prng, reverse);
-    }
+    // Tab 1 Secret File UI
+    const secretFileDropzone = document.getElementById('secret-file-dropzone');
+    const secretFileNameLabel = document.getElementById('secret-file-name-label');
+    const secretFileSizeLabel = document.getElementById('secret-file-size-label');
+    const btnClearSecret = document.getElementById('btn-clear-secret');
 
-    // --- COMPRESSION-RESISTANT ALGORITHMS (Block-Level Permutation) ---
-    // Key insight: JPEG processes 8×8 blocks. By permuting ENTIRE blocks,
-    // compression only affects WITHIN each block, not block positions.
-    // → Reversible even after JPEG compression or WhatsApp sending.
-    function applyBlockShuffle(imgData, w, h, prng, reverse, blockSize) {
-        const bw = Math.floor(w / blockSize);
-        const bh = Math.floor(h / blockSize);
-        const numBlocks = bw * bh;
-        if (numBlocks < 2) return;
-        // Fisher-Yates permutation seeded by PRNG
-        const perm = Array.from({length: numBlocks}, (_, i) => i);
-        // Need deterministic permutation, consume prng in same order
-        const rands = [];
-        for (let i = numBlocks - 1; i > 0; i--) rands.push(Math.floor(prng() * (i + 1)));
-        for (let k = 0; k < rands.length; k++) {
-            const i = numBlocks - 1 - k;
-            [perm[i], perm[rands[k]]] = [perm[rands[k]], perm[i]];
-        }
-        const src = new Uint8Array(imgData.data);
-        const dst = new Uint8Array(src.length);
-        dst.set(src); // copy edge pixels that don't fit in blocks
-        for (let bi = 0; bi < numBlocks; bi++) {
-            const srcIdx = reverse ? perm[bi] : bi;
-            const dstIdx = reverse ? bi : perm[bi];
-            const srcX = (srcIdx % bw) * blockSize;
-            const srcY = Math.floor(srcIdx / bw) * blockSize;
-            const dstX = (dstIdx % bw) * blockSize;
-            const dstY = Math.floor(dstIdx / bw) * blockSize;
-            for (let dy = 0; dy < blockSize; dy++) {
-                const srcRow = ((srcY + dy) * w + srcX) * 4;
-                const dstRow = ((dstY + dy) * w + dstX) * 4;
-                for (let dx = 0; dx < blockSize; dx++) {
-                    const si = srcRow + dx * 4;
-                    const di = dstRow + dx * 4;
-                    dst[di] = src[si]; dst[di+1] = src[si+1];
-                    dst[di+2] = src[si+2]; dst[di+3] = src[si+3];
-                }
-            }
-        }
-        imgData.data.set(dst);
-    }
-    function applyBlockShuffle8(imgData, w, h, prng, reverse) {
-        applyBlockShuffle(imgData, w, h, prng, reverse, 8);
-    }
-    function applyBlockShuffle16(imgData, w, h, prng, reverse) {
-        applyBlockShuffle(imgData, w, h, prng, reverse, 16);
-    }
+    // Tab 2: Revert
+    const revertDropZone = document.getElementById('revert-dropzone');
+    const revertFileInput = document.getElementById('revert-file-input');
+    const revertEmptyUI = document.getElementById('revert-empty-ui');
+    const revertViewport = document.getElementById('revert-viewport');
+    const revertPreviewImg = document.getElementById('revert-preview-img');
+    const revertAlgoSelect = document.getElementById('revert-algo-select');
+    const revertContainerBadge = document.getElementById('revert-container-badge');
+    const revertPwd = document.getElementById('revert-pwd');
+    const toggleRevPwd = document.getElementById('toggle-rev-pwd-visibility');
+    const btnRunRevert = document.getElementById('btn-run-revert');
+    const btnBruteForce = document.getElementById('btn-brute-force');
+    const revertMetaCard = document.getElementById('revert-meta-card');
+    const detectedAlgoInfo = document.getElementById('detected-algo-info');
+    const detectedWmInfo = document.getElementById('detected-wm-info');
+    const detectedSigInfo = document.getElementById('detected-sig-info');
+    const extractedPayloadCard = document.getElementById('extracted-payload-card');
+    const btnDownloadSecret = document.getElementById('btn-download-secret');
+    const payloadThumbPreview = document.getElementById('payload-thumb-preview');
+    const payloadFilenameText = document.getElementById('payload-filename-text');
+    const payloadMetaText = document.getElementById('payload-meta-text');
+    const payloadSourceTag = document.getElementById('payload-source-tag');
+    const payloadTypeBadge = document.getElementById('payload-type-badge');
 
-    // --- DFWS (DualsFWShield) — Compression/Crop/Screenshot-Resistant ---
-    // Each 8×8 block gets: channel rotation + flip + inversion + position shuffle.
-    // All ops survive JPEG. Each surviving block is independently reversible.
-    function applyDFWS(imgData, w, h, prng, reverse) {
-        const BS = 8;
-        const bw = Math.floor(w / BS), bh = Math.floor(h / BS);
-        const numBlocks = bw * bh;
-        if (numBlocks < 2) return;
+    // Tab 3: Forensic Lab
+    const bitPlaneCanvas = document.getElementById('bit-plane-canvas');
+    const bitChips = document.querySelectorAll('[data-bit]');
+    const channelChips = document.querySelectorAll('[data-channel]');
+    const exifTableBody = document.getElementById('exif-table-body');
+    const btnStripAndSave = document.getElementById('btn-strip-and-save');
+    const forensicSha256 = document.getElementById('forensic-sha256');
+    const forensicSha512 = document.getElementById('forensic-sha512');
 
-        // Generate per-block transforms (deterministic from PRNG)
-        const transforms = new Array(numBlocks);
-        for (let i = 0; i < numBlocks; i++) {
-            transforms[i] = {
-                chanRot: Math.floor(prng() * 3),   // 0=none, 1=RGB→GBR, 2=RGB→BRG
-                hFlip:   prng() > 0.5,
-                vFlip:   prng() > 0.5,
-                invert:  prng() > 0.5
-            };
-        }
-        // Generate block permutation (Fisher-Yates)
-        const perm = Array.from({length: numBlocks}, (_, i) => i);
-        for (let i = numBlocks - 1; i > 0; i--) {
-            const j = Math.floor(prng() * (i + 1));
-            [perm[i], perm[j]] = [perm[j], perm[i]];
-        }
+    // Tab 4: History & Header Tools
+    const historyContainer = document.getElementById('history-container');
+    const historyEmptyState = document.getElementById('history-empty-state');
+    const btnExportHistory = document.getElementById('btn-export-history');
+    const btnClearHistory = document.getElementById('btn-clear-history');
 
-        const src = new Uint8Array(imgData.data);
-        const dst = new Uint8Array(src.length);
-        dst.set(src); // preserve edge pixels outside block grid
+    const themeToggle = document.getElementById('theme-toggle');
+    const audioToggle = document.getElementById('audio-toggle');
+    const helpToggle = document.getElementById('help-toggle');
+    const helpModal = document.getElementById('help-modal');
+    const btnCloseHelp = document.getElementById('btn-close-help');
+    const toastContainer = document.getElementById('toast-container');
 
-        function transformBlock(srcBuf, dstBuf, sx, sy, dx, dy, tf, rev) {
-            for (let by = 0; by < BS; by++) {
-                for (let bx = 0; bx < BS; bx++) {
-                    // Flip coordinates
-                    let rx = rev ? (tf.hFlip ? BS-1-bx : bx) : bx;
-                    let ry = rev ? (tf.vFlip ? BS-1-by : by) : by;
-                    let ox = !rev ? (tf.hFlip ? BS-1-bx : bx) : bx;
-                    let oy = !rev ? (tf.vFlip ? BS-1-by : by) : by;
-                    const si = ((sy + ry) * w + (sx + rx)) * 4;
-                    const di = ((dy + oy) * w + (dx + ox)) * 4;
-                    let r = srcBuf[si], g = srcBuf[si+1], b = srcBuf[si+2];
-                    // Channel rotation
-                    if (!rev) {
-                        if (tf.chanRot === 1) { const t=r; r=g; g=b; b=t; }
-                        else if (tf.chanRot === 2) { const t=r; r=b; b=g; g=t; }
-                        if (tf.invert) { r=255-r; g=255-g; b=255-b; }
-                    } else {
-                        if (tf.invert) { r=255-r; g=255-g; b=255-b; }
-                        if (tf.chanRot === 1) { const t=b; b=g; g=r; r=t; }
-                        else if (tf.chanRot === 2) { const t=g; g=b; b=r; r=t; }
-                    }
-                    dstBuf[di] = r; dstBuf[di+1] = g; dstBuf[di+2] = b; dstBuf[di+3] = srcBuf[si+3];
-                }
-            }
-        }
+    // App State
+    let activeFiles = [];
+    let currentImage = new Image();
+    let currentImageFile = null;
 
-        if (!reverse) {
-            // Forward: transform each block, then shuffle
-            for (let i = 0; i < numBlocks; i++) {
-                const srcX = (i % bw) * BS, srcY = Math.floor(i / bw) * BS;
-                const dstIdx = perm[i];
-                const dstX = (dstIdx % bw) * BS, dstY = Math.floor(dstIdx / bw) * BS;
-                transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], false);
-            }
-        } else {
-            // Reverse: un-shuffle, then un-transform
-            for (let i = 0; i < numBlocks; i++) {
-                const shuffledIdx = perm[i]; // block i went to position perm[i]
-                const srcX = (shuffledIdx % bw) * BS, srcY = Math.floor(shuffledIdx / bw) * BS;
-                const dstX = (i % bw) * BS, dstY = Math.floor(i / bw) * BS;
-                transformBlock(src, dst, srcX, srcY, dstX, dstY, transforms[i], true);
-            }
-        }
-        imgData.data.set(dst);
-    }
+    let targetRevertFile = null;
+    let targetRevertImage = new Image();
 
-    // --- 6 NEW ALGORITHMS (main thread fallback) ---
-    function hilbertD2XY(n, d) {
-        let x = 0, y = 0, s, t = d;
-        for (s = 1; s < n; s *= 2) {
-            const rx = 1 & (t / 2), ry = 1 & (t ^ rx);
-            if (ry === 0) { if (rx === 1) { x = s-1-x; y = s-1-y; } const tmp = x; x = y; y = tmp; }
-            x += s * rx; y += s * ry; t = Math.floor(t / 4);
-        }
-        return [x, y];
-    }
-    function applyHilbert(imgData, w, h, prng, rev) {
-        const total = w * h; let n = 1; while (n*n < total) n *= 2;
-        const src32 = new Uint32Array(imgData.data.buffer.slice(0)), dst32 = new Uint32Array(total);
-        const offset = Math.floor(prng() * 1000000), mapping = new Int32Array(total);
-        let idx = 0;
-        for (let d = 0; d < n*n && idx < total; d++) {
-            const [hx, hy] = hilbertD2XY(n, (d + offset) % (n * n));
-            if (hx < w && hy < h) { mapping[idx] = hy * w + hx; idx++; }
-        }
-        while (idx < total) { mapping[idx] = idx; idx++; }
-        if (!rev) { for (let i = 0; i < total; i++) dst32[mapping[i]] = src32[i]; }
-        else { for (let i = 0; i < total; i++) dst32[i] = src32[mapping[i]]; }
-        new Uint8Array(imgData.data.buffer).set(new Uint8Array(dst32.buffer));
-    }
-    function applySpiral(imgData, w, h, prng, rev) {
-        const total = w * h;
-        const src32 = new Uint32Array(imgData.data.buffer.slice(0)), dst32 = new Uint32Array(total);
-        const spiral = []; let top = 0, bottom = h-1, left = 0, right = w-1;
-        while (top <= bottom && left <= right) {
-            for (let x = left; x <= right; x++) spiral.push(top*w+x); top++;
-            for (let y = top; y <= bottom; y++) spiral.push(y*w+right); right--;
-            if (top <= bottom) { for (let x = right; x >= left; x--) spiral.push(bottom*w+x); bottom--; }
-            if (left <= right) { for (let y = bottom; y >= top; y--) spiral.push(y*w+left); left++; }
-        }
-        if (!rev) { for (let i = 0; i < total; i++) dst32[spiral[i]] = src32[i]; }
-        else { for (let i = 0; i < total; i++) dst32[i] = src32[spiral[i]]; }
-        new Uint8Array(imgData.data.buffer).set(new Uint8Array(dst32.buffer));
-    }
-    function applyZigzag(imgData, w, h, prng, rev) {
-        const total = w * h;
-        const src32 = new Uint32Array(imgData.data.buffer.slice(0)), dst32 = new Uint32Array(total);
-        const order = [];
-        for (let sum = 0; sum < w+h-1; sum++) {
-            if (sum % 2 === 0) { for (let y = Math.min(sum, h-1); y >= Math.max(0, sum-w+1); y--) order.push(y*w+(sum-y)); }
-            else { for (let y = Math.max(0, sum-w+1); y <= Math.min(sum, h-1); y++) order.push(y*w+(sum-y)); }
-        }
-        if (!rev) { for (let i = 0; i < total; i++) dst32[order[i]] = src32[i]; }
-        else { for (let i = 0; i < total; i++) dst32[i] = src32[order[i]]; }
-        new Uint8Array(imgData.data.buffer).set(new Uint8Array(dst32.buffer));
-    }
-    function applyChirikov(imgData, w, h, prng, rev) {
-        const K = 2 + prng() * 8, iter = 3 + Math.floor(prng() * 7);
-        const src32 = new Uint32Array(imgData.data.buffer.slice(0)), dst32 = new Uint32Array(w*h);
-        const mapping = new Int32Array(w*h); for (let i = 0; i < w*h; i++) mapping[i] = i;
-        const TWO_PI = 2 * Math.PI;
-        for (let it = 0; it < iter; it++) {
-            const next = new Int32Array(w*h);
-            for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-                if (!rev) { const pn = mod(y + Math.floor(K*w*Math.sin(TWO_PI*x/w)/TWO_PI), h); const qn = mod(x+pn, w); next[pn*w+qn] = mapping[y*w+x]; }
-                else { const qp = mod(x-y, w); const pp = mod(y - Math.floor(K*w*Math.sin(TWO_PI*qp/w)/TWO_PI), h); next[pp*w+qp] = mapping[y*w+x]; }
-            }
-            mapping.set(next);
-        }
-        for (let i = 0; i < w*h; i++) dst32[i] = src32[mapping[i]];
-        new Uint8Array(imgData.data.buffer).set(new Uint8Array(dst32.buffer));
-    }
-    function applyHenon(imgData, w, h, prng, rev) {
-        const a = 1.2 + prng()*0.2, b = 0.2 + prng()*0.1, total = w*h;
-        const src32 = new Uint32Array(imgData.data.buffer.slice(0)), dst32 = new Uint32Array(total);
-        const seq = new Float64Array(total);
-        let xh = prng()*0.5, yh = prng()*0.5;
-        for (let i = 0; i < total; i++) { const nx = 1 - a*xh*xh + yh; yh = b*xh; xh = nx; seq[i] = xh; }
-        const idx = new Int32Array(total); for (let i = 0; i < total; i++) idx[i] = i;
-        idx.sort((a, b) => seq[a] - seq[b]);
-        if (!rev) { for (let i = 0; i < total; i++) dst32[idx[i]] = src32[i]; }
-        else { for (let i = 0; i < total; i++) dst32[i] = src32[idx[i]]; }
-        new Uint8Array(imgData.data.buffer).set(new Uint8Array(dst32.buffer));
-    }
-    function applyRubik(imgData, w, h, prng, rev) {
-        const numMoves = 20 + Math.floor(prng()*40), moves = [];
-        for (let i = 0; i < numMoves; i++) moves.push({ ch: Math.floor(prng()*3), isRow: prng()<0.5, idx: Math.floor(prng()*Math.max(w,h)), shift: Math.floor(prng()*Math.max(w,h)) });
-        if (rev) moves.reverse();
-        const d = imgData.data;
-        for (const m of moves) {
-            if (m.isRow) {
-                const y = m.idx % h, row = new Uint8Array(w);
-                for (let x = 0; x < w; x++) row[x] = d[(y*w+x)*4+m.ch];
-                for (let x = 0; x < w; x++) d[(y*w+x)*4+m.ch] = row[rev ? mod(x+m.shift,w) : mod(x-m.shift,w)];
-            } else {
-                const x = m.idx % w, col = new Uint8Array(h);
-                for (let y = 0; y < h; y++) col[y] = d[(y*w+x)*4+m.ch];
-                for (let y = 0; y < h; y++) d[(y*w+x)*4+m.ch] = col[rev ? mod(y+m.shift,h) : mod(y-m.shift,h)];
-            }
-        }
-    }
+    let originalPixels = null;
+    let obfuscatedPixels = null;
+    let imageWidth = 0;
+    let imageHeight = 0;
 
-    // --- DCT ROBUST WATERMARK (SynthID-style) ---
-    const RobustWatermark = {
-        // 1D DCT-II
-        dct8(block) {
-            const N = 8, out = new Float64Array(N);
-            for (let k = 0; k < N; k++) {
-                let sum = 0;
-                for (let n = 0; n < N; n++) sum += block[n] * Math.cos(Math.PI * (2*n+1) * k / (2*N));
-                out[k] = sum * (k === 0 ? Math.sqrt(1/N) : Math.sqrt(2/N));
-            }
-            return out;
-        },
-        // 1D IDCT-II
-        idct8(coef) {
-            const N = 8, out = new Float64Array(N);
-            for (let n = 0; n < N; n++) {
-                let sum = 0;
-                for (let k = 0; k < N; k++) sum += coef[k] * Math.cos(Math.PI * (2*n+1) * k / (2*N)) * (k === 0 ? Math.sqrt(1/N) : Math.sqrt(2/N));
-                out[n] = sum;
-            }
-            return out;
-        },
-        // 2D DCT on 8x8 block
-        dct2d(block) {
-            const tmp = new Float64Array(64);
-            for (let r = 0; r < 8; r++) { const row = this.dct8(block.subarray(r*8, r*8+8)); for (let c = 0; c < 8; c++) tmp[r*8+c] = row[c]; }
-            for (let c = 0; c < 8; c++) { const col = new Float64Array(8); for (let r = 0; r < 8; r++) col[r] = tmp[r*8+c]; const res = this.dct8(col); for (let r = 0; r < 8; r++) tmp[r*8+c] = res[r]; }
-            return tmp;
-        },
-        // 2D IDCT on 8x8 block
-        idct2d(coef) {
-            const tmp = new Float64Array(64);
-            for (let c = 0; c < 8; c++) { const col = new Float64Array(8); for (let r = 0; r < 8; r++) col[r] = coef[r*8+c]; const res = this.idct8(col); for (let r = 0; r < 8; r++) tmp[r*8+c] = res[r]; }
-            for (let r = 0; r < 8; r++) { const row = this.idct8(tmp.subarray(r*8, r*8+8)); for (let c = 0; c < 8; c++) tmp[r*8+c] = row[c]; }
-            return tmp;
-        },
-        // Mid-frequency positions for embedding (survive JPEG quantization)
-        MID_FREQ: [[1,2],[2,1],[3,2],[2,3],[1,4],[4,1],[3,3],[4,4],[2,2],[5,5]],
-        QUANT_STEP: 35, // Base step, will be adaptive
+    let compareSplit = 0.5;
+    let isDraggingSlider = false;
 
-        rgbToY(r, g, b) { return 0.299*r + 0.587*g + 0.114*b; },
-        yToRgb(y, r, g, b) {
-            const oldY = this.rgbToY(r, g, b);
-            const dy = y - oldY;
-            return [Math.max(0,Math.min(255, r + dy)), Math.max(0,Math.min(255, g + dy)), Math.max(0,Math.min(255, b + dy))];
-        },
+    let currentSecretPayloadBlob = null;
+    let currentRestoredBlobUrl = null;
+    let selectedSecretFile = null;
 
-        embed(imgData, text) {
-            const w = imgData.width, h = imgData.height, d = imgData.data;
-            const bytes = new TextEncoder().encode(text.substring(0, 16));
-            const bits = [];
-            for (let i = 0; i < 8; i++) bits.push((bytes.length >> i) & 1);
-            for (const b of bytes) for (let j = 0; j < 8; j++) bits.push((b >> j) & 1);
-            if (bits.length === 0) return;
+    let forensicChannel = 'gray';
+    let forensicBit = 0;
 
-            const numBits = bits.length;
-            const freqPerBlock = this.MID_FREQ.length;
+    // Zoom & Pan State
+    let zoomScale = 1;
+    let panX = 0;
+    let panY = 0;
+    let isPanning = false;
+    let panStartX = 0;
+    let panStartY = 0;
 
-            for (let by = 0; by + 8 <= h; by += 8) {
-                for (let bx = 0; bx + 8 <= w; bx += 8) {
-                    const block = new Float64Array(64);
-                    let avgY = 0;
-                    for (let r = 0; r < 8; r++) {
-                        for (let c = 0; c < 8; c++) {
-                            const i = ((by+r)*w+(bx+c))*4;
-                            block[r*8+c] = this.rgbToY(d[i], d[i+1], d[i+2]);
-                            avgY += block[r*8+c];
-                        }
-                    }
-                    avgY /= 64;
-
-                    // Adaptive Q: weaker in dark areas to prevent grain
-                    const Q = this.QUANT_STEP * (0.4 + (avgY / 255) * 0.8);
-                    const dct = this.dct2d(block);
-                    
-                    // Packet Mode: every 4x4 block cluster (32x32px) repeats the whole payload
-                    const blockIdxInMacro = (Math.floor((by%32)/8) * 4 + Math.floor((bx%32)/8));
-                    
-                    for (let bi = 0; bi < freqPerBlock; bi++) {
-                        const bitIdx = (blockIdxInMacro * freqPerBlock + bi) % numBits;
-                        const [r, c] = this.MID_FREQ[bi];
-                        const bit = bits[bitIdx];
-                        const coef = dct[r*8+c];
-                        const quantized = Math.round(coef / Q) * Q;
-                        dct[r*8+c] = quantized + (bit ? Q/4 : -Q/4);
-                    }
-
-                    const spatial = this.idct2d(dct);
-                    for (let r = 0; r < 8; r++) {
-                        for (let c = 0; c < 8; c++) {
-                            const i = ((by+r)*w+(bx+c))*4;
-                            const [nr, ng, nb] = this.yToRgb(spatial[r*8+c], d[i], d[i+1], d[i+2]);
-                            d[i] = nr; d[i+1] = ng; d[i+2] = nb;
-                        }
-                    }
-                }
-            }
-        },
-
-        extract(imgData) {
-            const w = imgData.width, h = imgData.height, d = imgData.data;
-            const maxBits = 8 + 16 * 8;
-            const votes = new Array(maxBits).fill(null).map(() => [0, 0]);
-            const freqPerBlock = this.MID_FREQ.length;
-
-            // Sample with high coverage
-            for (let by = 0; by + 8 <= h; by += 8) {
-                for (let bx = 0; bx + 8 <= w; bx += 8) {
-                    const block = new Float64Array(64);
-                    let avgY = 0;
-                    for (let r = 0; r < 8; r++) {
-                        for (let c = 0; c < 8; c++) {
-                            const i = ((by+r)*w+(bx+c))*4;
-                            block[r*8+c] = this.rgbToY(d[i], d[i+1], d[i+2]);
-                            avgY += block[r*8+c];
-                        }
-                    }
-                    avgY /= 64;
-                    const Q = this.QUANT_STEP * (0.4 + (avgY / 255) * 0.8);
-                    const dct = this.dct2d(block);
-                    
-                    const blockIdxInMacro = (Math.floor((by%32)/8) * 4 + Math.floor((bx%32)/8));
-                    
-                    for (let bi = 0; bi < freqPerBlock; bi++) {
-                        const bitIdx = (blockIdxInMacro * freqPerBlock + bi) % maxBits;
-                        const [r, c] = this.MID_FREQ[bi];
-                        const coef = dct[r*8+c];
-                        const quantized = Math.round(coef / Q) * Q;
-                        const bit = (coef - quantized) > 0 ? 1 : 0;
-                        votes[bitIdx][bit]++;
-                    }
-                }
-            }
-
-            const finalBits = votes.map(v => v[1] > v[0] ? 1 : 0);
-            let len = 0;
-            for (let i = 0; i < 8; i++) len |= finalBits[i] << i;
-            if (len <= 0 || len > 16) return null;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-                let b = 0;
-                for (let j = 0; j < 8; j++) {
-                    const idx = 8 + i*8 + j;
-                    if (idx < finalBits.length) b |= finalBits[idx] << j;
-                }
-                bytes[i] = b;
-            }
-            try {
-                const t = new TextDecoder().decode(bytes);
-                if (/^[\x20-\x7E]+$/.test(t)) return t;
-            } catch(e) {}
-            return null;
-        },
-        getDimensions(imgData) {
-            const wm = this.extract(imgData);
-            if (wm && wm.startsWith('DIM:')) {
-                const parts = wm.split(':');
-                return { w: parseInt(parts[1]), h: parseInt(parts[2]), text: parts[3] };
-            }
-            return null;
-        }
-    };
-
-    // --- ALGO ROUTING ---
-    function applyAlgorithm(imgData, width, height, algo, seed, reverse = false) {
-        const prng = getPRNG(seed);
-        if (algo === 'xor-shuffle') applyXorShuffle(imgData, width, height, prng, reverse);
-        else if (algo === 'logistic-xor') applyLogisticXOR(imgData, width, height, prng, reverse);
-        else if (algo === 'cat-map') applyCatMap(imgData, width, height, prng, reverse);
-        else if (algo === 'baker-map') applyBakerMap(imgData, width, height, prng, reverse);
-        else if (algo === 'affine-map') applyAffineMap(imgData, width, height, prng, reverse);
-        else if (algo === 'wave-shift') applyWaveShift(imgData, width, height, prng, reverse);
-        else if (algo === 'prime-scatter') applyPrimeScatter(imgData, width, height, prng, reverse);
-        else if (algo === 'rgb-shift') applyRgbShift(imgData, width, height, prng, reverse);
-        else if (algo === 'hilbert') applyHilbert(imgData, width, height, prng, reverse);
-        else if (algo === 'spiral') applySpiral(imgData, width, height, prng, reverse);
-        else if (algo === 'zigzag') applyZigzag(imgData, width, height, prng, reverse);
-        else if (algo === 'chirikov') applyChirikov(imgData, width, height, prng, reverse);
-        else if (algo === 'henon') applyHenon(imgData, width, height, prng, reverse);
-        else if (algo === 'rubik') applyRubik(imgData, width, height, prng, reverse);
-        else if (algo === 'block-shuffle-8') applyBlockShuffle8(imgData, width, height, prng, reverse);
-        else if (algo === 'block-shuffle-16') applyBlockShuffle16(imgData, width, height, prng, reverse);
-        else if (algo === 'dfws') applyDFWS(imgData, width, height, prng, reverse);
-        else if (algo === 'quantize-shuffle') applyQuantizeShuffle(imgData, width, height, prng, reverse);
-        else if (algo === 'color-crush') applyColorCrush(imgData, width, height, prng, reverse);
-        else if (algo === 'blur-noise') applyBlurNoise(imgData, width, height, prng, reverse);
-        else if (algo === 'salt-pepper') applySaltPepper(imgData, width, height, prng, reverse);
-        // 'none' = stego-only, no pixel manipulation
-    }
-
-    // --- OBFUSQUER ---
-    btnObfuscate.addEventListener('click', async () => {
-        if (!originalImageFile) return alert("Veuillez charger une image d'abord.");
-        const pwd = obfPwd.value;
-        const sig = obfSig.value;
-        const algo = algoSelect.value;
-        const sigLoc = sigLocation?.value || 'meta';
-        btnObfuscate.innerText = "Calculs Mathématiques...";
-        btnObfuscate.disabled = true;
-
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = uploadedImage.width;
-            canvas.height = uploadedImage.height;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(uploadedImage, 0, 0);
-
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const internalSalt = crypto.randomUUID();
-            const seed = pwd ? pwd + internalSalt : 'public' + internalSalt;
-            
-            if (algo === 'dfws') {
-                RobustWatermark.embed(imgData, "DualsFWShield");
-            }
-            applyAlgorithm(imgData, canvas.width, canvas.height, algo, seed, false);
-            
-            let metadata = { v: 5, alg: algo, pwd: !!pwd, salt: internalSalt, mime: originalImageFile.type };
-
-            let fileToEmbed = null;
-            if (otherImageFile) fileToEmbed = otherImageFile;
-            else if (embedOriginalCb.checked) fileToEmbed = originalImageFile;
-
-            if (fileToEmbed) {
-                btnObfuscate.innerText = "Chiffrement du payload...";
-                const buf = await fileToEmbed.arrayBuffer();
-                const comp = await compressData(buf);
-                const { encrypted, salt: pSalt, iv: pIv } = await encryptData(comp, pwd);
-                metadata.payload = {
-                    data: arrayBufferToBase64(encrypted),
-                    salt: pSalt ? arrayBufferToBase64(pSalt) : null,
-                    iv: pIv ? arrayBufferToBase64(pIv) : null,
-                    mime: fileToEmbed.type
-                };
-            }
-
-            let sigPayload = null;
-            if (sig) {
-                const enc = new TextEncoder();
-                const comp = await compressData(enc.encode(sig));
-                const { encrypted, salt: sSalt, iv: sIv } = await encryptData(comp, pwd);
-                sigPayload = {
-                    data: arrayBufferToBase64(encrypted),
-                    salt: sSalt ? arrayBufferToBase64(sSalt) : null,
-                    iv: sIv ? arrayBufferToBase64(sIv) : null
-                };
-            }
-
-            if (sigPayload && sigLoc === 'lsb') {
-                const textToHide = "LSB_SIG:" + JSON.stringify(sigPayload);
-                const bytesToHide = new TextEncoder().encode(textToHide);
-                try {
-                    encodeLSB(imgData, bytesToHide);
-                } catch(e) {
-                    alert("Message trop long pour les pixels. Sauvegardé en métadonnées.");
-                    metadata.sig = sigPayload;
-                }
-            } else if (sigPayload) {
-                metadata.sig = sigPayload;
-            }
-
-            ctx.putImageData(imgData, 0, 0);
-            
-            btnObfuscate.innerText = "Génération du fichier PNG...";
-            const visualBlob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-            
-            const jsonStr = JSON.stringify(metadata);
-            const tail = new TextEncoder().encode(jsonStr + MAGIC_MARKER);
-            const finalBlob = new Blob([visualBlob, tail], { type: 'image/png' });
-
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(finalBlob);
-            a.download = `obscurify_${Date.now()}.png`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-
-        } catch (e) {
-            console.error(e);
-            alert("Erreur: " + e.message);
-        }
-        btnObfuscate.innerText = "Offusquer & Télécharger (PNG)";
-        btnObfuscate.disabled = false;
-    });
-
-    // --- RESTAURER ---
-    btnRevert.addEventListener('click', async () => {
-        if (!targetObfuscatedFile) return alert("Veuillez sélectionner l'image.");
-        btnRevert.innerText = "Equation Inverse & Stéganographie...";
-        btnRevert.disabled = true;
-        revertResult.classList.add('hidden');
-        revertHiddenContainer.classList.add('hidden');
-        revertSigContainer.classList.add('hidden');
-
-        try {
-            const buf = await targetObfuscatedFile.arrayBuffer();
-            const dec = new TextDecoder();
-            
-            const tailString = dec.decode(buf.slice(Math.max(0, buf.byteLength - 15000000)));
-            const magicIdx = tailString.lastIndexOf(MAGIC_MARKER);
-            if (magicIdx === -1) throw new Error("Format invalide. Ce n'est pas une image Obscurify.");
-            
-            const jsonStart = tailString.substring(0, magicIdx).lastIndexOf('{"v":5');
-            if (jsonStart === -1) throw new Error("Métadonnées altérées ou version obsolète.");
-            const jsonStr = tailString.substring(jsonStart, magicIdx);
-            const meta = JSON.parse(jsonStr);
-
-            if (meta.pwd && !revPwd.value) throw new Error("Mot de passe requis pour restaurer.");
-            const seed = meta.pwd ? revPwd.value + meta.salt : 'public' + meta.salt;
-
-            const canvas = document.createElement('canvas');
-            canvas.width = targetObfuscatedImage.width;
-            canvas.height = targetObfuscatedImage.height;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(targetObfuscatedImage, 0, 0);
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
-            let sigPayload = meta.sig;
-            const lsbBytes = decodeLSB(imgData);
-            if (lsbBytes) {
-                const text = new TextDecoder().decode(lsbBytes);
-                if (text.startsWith("LSB_SIG:")) sigPayload = JSON.parse(text.substring(8));
-            }
-
-            applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true);
-            ctx.putImageData(imgData, 0, 0);
-
-            const mathBlob = await new Promise(r => canvas.toBlob(r, meta.mime));
-            if (currentMathObjectUrl) URL.revokeObjectURL(currentMathObjectUrl);
-            currentMathObjectUrl = URL.createObjectURL(mathBlob);
-            
-            revertPreview.src = currentMathObjectUrl;
-            revertResult.classList.remove('hidden');
-
-            if (meta.payload) {
-                const encArr = base64ToArrayBuffer(meta.payload.data);
-                const sSalt = meta.payload.salt ? base64ToArrayBuffer(meta.payload.salt) : null;
-                const sIv = meta.payload.iv ? base64ToArrayBuffer(meta.payload.iv) : null;
-                try {
-                    const decComp = await decryptData(encArr, meta.pwd ? revPwd.value : null, sSalt, sIv);
-                    const original = await decompressData(decComp);
-                    const blob = new Blob([original], { type: meta.payload.mime });
-                    if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
-                    currentHiddenObjectUrl = URL.createObjectURL(blob);
-                    revertHiddenPreview.src = currentHiddenObjectUrl;
-                    revertHiddenContainer.classList.remove('hidden');
-                } catch(e) {}
-            }
-
-            if (sigPayload) {
-                const encArr = base64ToArrayBuffer(sigPayload.data);
-                const sSalt = sigPayload.salt ? base64ToArrayBuffer(sigPayload.salt) : null;
-                const sIv = sigPayload.iv ? base64ToArrayBuffer(sigPayload.iv) : null;
-                try {
-                    const decComp = await decryptData(encArr, meta.pwd ? revPwd.value : null, sSalt, sIv);
-                    const decFinal = await decompressData(decComp);
-                    revertSigText.innerText = new TextDecoder().decode(decFinal);
-                    revertSigContainer.classList.remove('hidden');
-                } catch(e) {}
-            }
-
-        } catch (e) {
-            console.error(e);
-            alert("Erreur: " + e.message);
-        }
-        btnRevert.innerText = "Restaurer";
-        btnRevert.disabled = false;
-    });
-
-    btnDownloadMath.addEventListener('click', () => {
-        const a = document.createElement('a');
-        a.href = currentMathObjectUrl;
-        a.download = `restored_math_${Date.now()}.png`;
-        a.click();
-    });
-    btnDownloadHidden.addEventListener('click', () => {
-        const a = document.createElement('a');
-        a.href = currentHiddenObjectUrl;
-        a.download = `extracted_payload_${Date.now()}.png`;
-        a.click();
-    });
-
-    // ================================================================
-    //  AETHERSHARE INTEGRATION — Partager Tab
-    // ================================================================
-    const ShareEncoder = {
-        async fileToBase64(blob) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => { const r = reader.result; resolve(r.includes(',') ? r.split(',')[1] : r); };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        },
-        base64ToBlob(base64) {
-            const bc = atob(base64), ba = [];
-            for (let o = 0; o < bc.length; o += 1024) {
-                const s = bc.slice(o, o + 1024), bn = new Array(s.length);
-                for (let i = 0; i < s.length; i++) bn[i] = s.charCodeAt(i);
-                ba.push(new Uint8Array(bn));
-            }
-            return new Blob(ba);
-        },
-        async compressStream(stream) {
-            if (!window.CompressionStream) return new Response(stream).blob();
-            return await new Response(stream.pipeThrough(new CompressionStream('gzip'))).blob();
-        },
-        async decompressBlob(blob) {
-            if (!window.DecompressionStream) return blob;
-            return await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
-        },
-        async compressImage(file, q = 0.7) {
-            return new Promise(r => {
-                if (!file.type.startsWith('image/')) { r(file); return; }
-                const img = new Image(); img.src = URL.createObjectURL(file);
-                img.onload = () => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; c.getContext('2d').drawImage(img, 0, 0); c.toBlob(b => r(b), 'image/webp', q); };
-                img.onerror = () => r(file);
-            });
-        },
-        async deriveKey(password, salt) {
-            const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), { name: 'PBKDF2' }, false, ['deriveKey']);
-            return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-        },
-        async encrypt(blob, password) {
-            const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
-            const key = await this.deriveKey(password, salt), buf = await blob.arrayBuffer();
-            const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, buf);
-            return { salt: this.bufToB64(salt), iv: this.bufToB64(iv), data: this.bufToB64(enc) };
-        },
-        async decrypt(b64Data, password, b64Salt, b64Iv) {
-            const salt = this.b64ToBuf(b64Salt), iv = this.b64ToBuf(b64Iv), enc = this.b64ToBuf(b64Data);
-            const key = await this.deriveKey(password, salt);
-            return new Blob([await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, enc)]);
-        },
-        async encryptBlob(blob, password) {
-            const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
-            const key = await this.deriveKey(password, salt), buf = await blob.arrayBuffer();
-            const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, buf);
-            return { salt: this.bufToB64(salt), iv: this.bufToB64(iv), blob: new Blob([enc]) };
-        },
-        async decryptBlob(encBlob, password, b64Salt, b64Iv) {
-            const salt = this.b64ToBuf(b64Salt), iv = this.b64ToBuf(b64Iv), buf = await encBlob.arrayBuffer();
-            const key = await this.deriveKey(password, salt);
-            return new Blob([await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, buf)]);
-        },
-        bufToB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); },
-        b64ToBuf(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); },
-        strToB64(str) { return this.bufToB64(new TextEncoder().encode(str)); },
-        b64ToStr(b64) { return new TextDecoder().decode(this.b64ToBuf(b64)); }
-    };
-
-    // Share DOM
-    const S = {
-        dropZone: document.getElementById('share-drop-zone'),
-        fileInput: document.getElementById('share-file-input'),
-        optionsPanel: document.getElementById('share-options-panel'),
-        filename: document.getElementById('share-filename'),
-        filesize: document.getElementById('share-filesize'),
-        lossyToggle: document.getElementById('share-lossy-toggle'),
-        encryptToggle: document.getElementById('share-encrypt-toggle'),
-        pwdContainer: document.getElementById('share-pwd-container'),
-        senderPwd: document.getElementById('share-sender-pwd'),
-        beamToggle: document.getElementById('share-beam-toggle'),
-        beamInfo: document.getElementById('share-beam-info'),
-        advancedToggle: document.getElementById('share-advanced-toggle'),
-        advancedPanel: document.getElementById('share-advanced-panel'),
-        timebomb: document.getElementById('share-timebomb'),
-        vibe: document.getElementById('share-vibe'),
-        geoToggle: document.getElementById('share-geo-toggle'),
-        audioTxBtn: document.getElementById('share-audio-tx-btn'),
-        camoBtn: document.getElementById('share-camo-btn'),
-        generateBtn: document.getElementById('share-generate-btn'),
-        resultPanel: document.getElementById('share-result-panel'),
-        shareUrl: document.getElementById('share-url'),
-        copyBtn: document.getElementById('share-copy-btn'),
-        qrBtn: document.getElementById('share-qr-btn'),
-        previewLink: document.getElementById('share-preview-link'),
-        qrContainer: document.getElementById('share-qr-container'),
-        qrcodeBox: document.getElementById('share-qrcode'),
-        statusMsg: document.getElementById('share-status-msg'),
-        progressContainer: document.getElementById('share-progress-container'),
-        progressFill: document.getElementById('share-progress-fill'),
-        progressText: document.getElementById('share-progress-text'),
-        // Receiver
-        senderView: document.getElementById('share-sender'),
-        receiverView: document.getElementById('share-receiver'),
-        recvFilename: document.getElementById('share-recv-filename'),
-        recvFilesize: document.getElementById('share-recv-filesize'),
-        decryptPanel: document.getElementById('share-decrypt-panel'),
-        decryptPwd: document.getElementById('share-decrypt-pwd'),
-        decryptBtn: document.getElementById('share-decrypt-btn'),
-        downloadBtn: document.getElementById('share-download-btn'),
-        recvProgress: document.getElementById('share-recv-progress'),
-        recvProgressFill: document.getElementById('share-recv-progress-fill'),
-        recvProgressText: document.getElementById('share-recv-progress-text'),
-        // Audio
-        openAudioBtn: document.getElementById('open-audio-btn'),
-        audioModal: document.getElementById('audio-modal'),
-        closeAudioBtn: document.getElementById('close-audio-btn'),
-        startListenBtn: document.getElementById('start-listen-btn'),
-        stopListenBtn: document.getElementById('stop-listen-btn'),
-        audioCanvas: document.getElementById('audio-visualizer'),
-        streamOutput: document.getElementById('stream-output'),
-        // Camo
-        camoExitTrigger: document.getElementById('camo-exit-trigger'),
-        toastContainer: document.getElementById('toast-container')
-    };
-
-    let shareFile = null;
-    let shareReceivedHeader = null;
-    let shareReceivedBlob = null;
-    let shareIncomingFile = {};
-
-    function formatSize(bytes) {
-        if (bytes === 0) return '0 B';
-        const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + s[i];
-    }
-
+    // ========================================================================
+    // UI UTILITIES & TOASTS
+    // ========================================================================
     function showToast(message, type = 'info') {
-        const t = document.createElement('div');
-        t.className = `toast ${type}`;
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
         const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
-        t.innerHTML = `<i>${icon}</i> <span>${message}</span>`;
-        S.toastContainer.appendChild(t);
-        void t.offsetWidth;
-        t.classList.add('visible');
-        setTimeout(() => { t.classList.remove('visible'); setTimeout(() => t.remove(), 300); }, 3000);
+        toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+        toastContainer.appendChild(toast);
+        void toast.offsetWidth;
+        toast.classList.add('visible');
+        setTimeout(() => {
+            toast.classList.remove('visible');
+            setTimeout(() => toast.remove(), 250);
+        }, 3200);
     }
 
-    function setShareLoading(on, text = 'Traitement...') {
-        if (on) {
-            S.progressContainer.classList.remove('hidden');
-            S.generateBtn.disabled = true;
-            S.progressText.innerText = text;
-            S.progressFill.style.width = '70%';
-        } else {
-            S.progressContainer.classList.add('hidden');
-            S.generateBtn.disabled = false;
-            S.progressFill.style.width = '0%';
-        }
-    }
-
-    // File drop
-    S.dropZone.addEventListener('click', () => S.fileInput.click());
-    ['dragenter','dragover','dragleave','drop'].forEach(e => S.dropZone.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }));
-    S.dropZone.addEventListener('dragover', () => S.dropZone.classList.add('drag-over'));
-    S.dropZone.addEventListener('dragleave', () => S.dropZone.classList.remove('drag-over'));
-    S.dropZone.addEventListener('drop', e => { S.dropZone.classList.remove('drag-over'); handleShareFile(e.dataTransfer.files); });
-    S.fileInput.addEventListener('change', e => handleShareFile(e.target.files));
-
-    async function handleShareFile(files) {
-        if (!files || !files.length) return;
-        let file;
-        if (files.length > 1) {
-            const zip = new JSZip();
-            for (let i = 0; i < files.length; i++) zip.file(files[i].name, files[i]);
-            const blob = await zip.generateAsync({ type: 'blob' });
-            file = new File([blob], 'archive.zip', { type: 'application/zip' });
-            S.filename.innerText = `📦 archive.zip (${files.length} fichiers)`;
-        } else {
-            file = files[0];
-            S.filename.innerText = file.name;
-        }
-        shareFile = file;
-        S.filesize.innerText = formatSize(file.size);
-        S.optionsPanel.classList.remove('hidden');
-        S.resultPanel.classList.add('hidden');
-        if (file.type.startsWith('image/')) { S.lossyToggle.parentElement.parentElement.classList.remove('hidden'); S.lossyToggle.checked = true; }
-        else { S.lossyToggle.parentElement.parentElement.classList.add('hidden'); S.lossyToggle.checked = false; }
-    }
-
-    // Toggles
-    S.encryptToggle.addEventListener('change', () => S.pwdContainer.classList.toggle('hidden', !S.encryptToggle.checked));
-    S.beamToggle.addEventListener('change', () => S.beamInfo.classList.toggle('hidden', !S.beamToggle.checked));
-    S.advancedToggle.addEventListener('click', () => S.advancedPanel.classList.toggle('hidden'));
-
-    /* 
-    // Audio (Missing share/audio.js)
-    S.openAudioBtn.addEventListener('click', () => S.audioModal.classList.remove('hidden'));
-    S.closeAudioBtn.addEventListener('click', () => { S.audioModal.classList.add('hidden'); if (window.audioComp) window.audioComp.stopListening(); S.startListenBtn.classList.remove('hidden'); S.stopListenBtn.classList.add('hidden'); });
-    S.startListenBtn.addEventListener('click', () => {
-        S.startListenBtn.classList.add('hidden'); S.stopListenBtn.classList.remove('hidden');
-        S.streamOutput.innerText = 'Écoute des signaux Aether...';
-        if (window.audioComp) window.audioComp.startListening(
-            data => { const ctx = S.audioCanvas.getContext('2d'), w = S.audioCanvas.width, h = S.audioCanvas.height; ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h); const bw = (w/data.length)*2.5; let x = 0; for (let i=0;i<data.length;i++) { const bh=data[i]/2; ctx.fillStyle=`rgb(${bh+100},50,200)`; ctx.fillRect(x,h-bh,bw,bh); x+=bw+1; } },
-            bit => { const sp = document.createElement('span'); sp.innerText = bit; sp.style.color = bit === 1 ? '#0f0' : '#555'; S.streamOutput.appendChild(sp); S.streamOutput.scrollTop = S.streamOutput.scrollHeight; }
-        );
-    });
-    S.stopListenBtn.addEventListener('click', () => { if (window.audioComp) window.audioComp.stopListening(); S.startListenBtn.classList.remove('hidden'); S.stopListenBtn.classList.add('hidden'); S.streamOutput.innerText += '\n[Arrêté]'; });
-    S.audioTxBtn.addEventListener('click', () => { if (shareFile && window.audioComp) window.audioComp.transmit(shareFile.name); else showToast('Fichier requis', 'error'); });
-    */
-
-    /*
-    // Camouflage (Missing share/features.js)
-    if (typeof Features !== 'undefined') {
-        S.camoBtn.addEventListener('click', () => Features.toggleCamouflage(true));
-        if (S.camoExitTrigger) S.camoExitTrigger.addEventListener('dblclick', () => Features.toggleCamouflage(false));
-        let escCount = 0, escTimer = null;
-        document.addEventListener('keydown', e => {
-            if (!document.body.classList.contains('camo-mode')) return;
-            if (e.key === 'Escape') { escCount++; if (escTimer) clearTimeout(escTimer); escTimer = setTimeout(() => escCount = 0, 500); if (escCount >= 3) { Features.toggleCamouflage(false); escCount = 0; } }
+    // Tab Switching
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            viewPanels.forEach(p => p.classList.remove('active'));
+            tab.classList.add('active');
+            const target = document.getElementById(tab.dataset.target);
+            if (target) target.classList.add('active');
+            if (tab.dataset.target === 'forensic-panel') updateForensics();
+            if (tab.dataset.target === 'history-panel') renderHistory();
         });
-    }
-    */
-
-    // Copy & QR
-    S.copyBtn.addEventListener('click', () => { navigator.clipboard.writeText(S.shareUrl.value); showToast('Lien copié !', 'success'); });
-    S.qrBtn.addEventListener('click', () => {
-        S.qrContainer.classList.toggle('hidden');
-        if (!S.qrContainer.classList.contains('hidden')) {
-            S.qrcodeBox.innerHTML = '';
-            try { const qr = qrcode(0, 'L'); qr.addData(S.shareUrl.value); qr.make(); S.qrcodeBox.innerHTML = qr.createImgTag(4, 8); const img = S.qrcodeBox.querySelector('img'); if (img) { img.style.width = '100%'; img.style.height = 'auto'; img.style.imageRendering = 'pixelated'; } }
-            catch(e) { showToast('Données trop volumineuses pour le QR', 'error'); S.qrContainer.classList.add('hidden'); }
-        }
     });
 
-    // Download
-    S.downloadBtn.addEventListener('click', () => {
-        if (!shareReceivedBlob) return;
-        const a = document.createElement('a'); a.href = URL.createObjectURL(shareReceivedBlob);
-        a.download = shareReceivedHeader ? shareReceivedHeader.filename : 'download';
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    });
-
-    // Decrypt
-    S.decryptBtn.addEventListener('click', async () => {
-        if (!shareReceivedHeader || !shareReceivedHeader.encrypted) return;
-        const pwd = S.decryptPwd.value;
-        if (!pwd) { showToast('Mot de passe requis', 'error'); return; }
-        S.decryptBtn.disabled = true; S.decryptBtn.innerText = 'Déchiffrement...';
-        try {
-            if (shareReceivedHeader.beam) shareReceivedBlob = await ShareEncoder.decryptBlob(shareReceivedBlob, pwd, shareReceivedHeader.salt, shareReceivedHeader.iv);
-            else { const dec = await ShareEncoder.decrypt(shareReceivedHeader.payload, pwd, shareReceivedHeader.salt, shareReceivedHeader.iv); shareReceivedBlob = await ShareEncoder.decompressBlob(dec); }
-            S.recvFilesize.innerText = formatSize(shareReceivedBlob.size);
-            S.downloadBtn.disabled = false; S.decryptPanel.classList.add('hidden');
-            S.recvFilename.innerText = shareReceivedHeader.filename;
-        } catch(e) { showToast('Échec du déchiffrement', 'error'); }
-        S.decryptBtn.disabled = false; S.decryptBtn.innerText = 'Déverrouiller';
-    });
-
-    // Generate Link
-    S.generateBtn.addEventListener('click', async () => {
-        if (!shareFile) return;
-        if (S.beamToggle.checked) {
-            alert("Beam P2P est temporairement indisponible (share/p2p.js manquant)");
-            /*
-            setShareLoading(true, 'Initialisation Beam...');
-            try {
-                const peerId = await window.p2p.init();
-                window.p2p.waitForReceiver(() => {
-                    S.statusMsg.innerText = '🚀 Envoi en cours...';
-                    S.progressContainer.classList.remove('hidden'); S.progressFill.style.width = '0%';
-                    window.p2p.sendFile(shareFile, {}, pct => { S.progressFill.style.width = pct+'%'; S.progressText.innerText = pct+'%'; S.statusMsg.innerText = `🚀 Envoi... ${pct}%`; })
-                    .then(() => { setShareLoading(false); showToast('Transfert terminé !', 'success'); S.statusMsg.innerText = '✅ Transfert Complete !'; });
-                }, err => { showToast('Erreur P2P: ' + err.message, 'error'); });
-                const hash = `BEAM|${peerId}|${encodeURIComponent(shareFile.name)}|${shareFile.size}`;
-                showShareResult(hash);
-                S.statusMsg.innerText = '📡 Beam Active: En attente du destinataire...';
-            } catch(e) { showToast('Erreur Beam: ' + e.message, 'error'); }
-            */
-            setShareLoading(false);
-            return;
-        }
-        setShareLoading(true, 'Traitement...');
-        setTimeout(async () => {
-            try {
-                let blob = shareFile;
-                if (S.lossyToggle.checked && shareFile.type.startsWith('image/')) { setShareLoading(true, 'Optimisation Image...'); blob = await ShareEncoder.compressImage(shareFile); }
-                setShareLoading(true, 'Compression...');
-                const compressed = await ShareEncoder.compressStream(blob.stream());
-                const header = { filename: shareFile.name, encrypted: S.encryptToggle.checked };
-                const vibe = S.vibe.value; if (vibe !== 'default') header.vibe = vibe;
-                const tb = parseInt(S.timebomb.value); if (tb > 0 && typeof Features !== 'undefined') header.expiry = Features.getExpiryTimestamp(tb);
-                if (S.geoToggle.checked && typeof Features !== 'undefined') { setShareLoading(true, 'Géolocalisation...'); header.geo = await Features.getCurrentPosition(); }
-                let payload;
-                if (header.encrypted) {
-                    const pwd = S.senderPwd.value; if (!pwd) throw new Error('Mot de passe requis');
-                    setShareLoading(true, 'Chiffrement...'); const enc = await ShareEncoder.encrypt(compressed, pwd);
-                    header.salt = enc.salt; header.iv = enc.iv; payload = enc.data;
-                } else { setShareLoading(true, 'Encodage...'); payload = await ShareEncoder.fileToBase64(compressed); }
-                const hb64 = ShareEncoder.strToB64(JSON.stringify(header));
-                showShareResult(`AETHER|${hb64}|${payload}`);
-            } catch(e) { showToast('Erreur: ' + e.message, 'error'); }
-            setShareLoading(false);
-        }, 50);
-    });
-
-    function showShareResult(hash) {
-        const url = `${location.origin}${location.pathname}#${hash}`;
-        S.shareUrl.value = url; S.previewLink.href = url;
-        S.resultPanel.classList.remove('hidden');
-        S.qrcodeBox.innerHTML = ''; S.qrContainer.classList.add('hidden');
-    }
-
-    // Routing: detect share links in URL hash
-    function handleShareRouting() {
-        const hash = location.hash.substring(1);
-        if (!hash || hash.length < 6 || !hash.includes('|')) return;
-        // Activate Share tab and receiver
-        tabs.forEach(t => t.classList.remove('active'));
-        views.forEach(v => v.classList.remove('active'));
-        document.querySelector('[data-target="share-view"]').classList.add('active');
-        document.getElementById('share-view').classList.add('active');
-        S.senderView.classList.remove('active');
-        S.receiverView.classList.add('active');
-        parseShareHash(hash);
-    }
-
-    async function parseShareHash(hash) {
-        S.downloadBtn.disabled = true; S.decryptPanel.classList.add('hidden');
-        try {
-            if (hash.startsWith('BEAM|')) {
-                alert("Beam P2P est temporairement indisponible (share/p2p.js manquant)");
-                /*
-                const p = hash.split('|'), peerId = p[1];
-                const hdr = { filename: decodeURIComponent(p[2]), beam: true };
-                S.recvFilename.innerText = '📡 ' + hdr.filename;
-                S.recvFilesize.innerText = 'Connexion au pair...';
-                shareReceivedHeader = hdr;
-                shareIncomingFile = { chunks: [], receivedSize: 0, totalSize: 0, initialized: false };
-                S.recvProgress.classList.remove('hidden'); S.recvProgressFill.style.width = '0%';
-                await window.p2p.init();
-                window.p2p.connect(peerId, data => {
-                    if (data.type === 'meta') {
-                        shareReceivedHeader = { filename: data.filename, size: data.size, fileType: data.fileType || 'application/octet-stream', encrypted: data.encrypted, salt: data.salt, iv: data.iv, beam: true };
-                        shareIncomingFile.totalSize = data.size; shareIncomingFile.initialized = true;
-                        S.recvFilename.innerText = (data.encrypted ? '🔒 ' : '📡 ') + data.filename;
-                        S.recvFilesize.innerText = 'Réception en cours...';
-                    } else if (data.type === 'chunk' && shareIncomingFile.initialized) {
-                        shareIncomingFile.chunks.push(data.data);
-                        shareIncomingFile.receivedSize += data.data.size || data.data.byteLength;
-                        const pct = Math.min(100, Math.round((shareIncomingFile.receivedSize / shareIncomingFile.totalSize) * 100));
-                        S.recvProgressFill.style.width = pct + '%'; S.recvProgressText.innerText = pct + '%';
-                        if (shareIncomingFile.receivedSize >= shareIncomingFile.totalSize) {
-                            shareReceivedBlob = new Blob(shareIncomingFile.chunks, { type: shareReceivedHeader.fileType });
-                            shareIncomingFile.chunks = [];
-                            if (shareReceivedHeader.encrypted) { S.recvFilesize.innerText = 'Fichier chiffré reçu.'; S.decryptPanel.classList.remove('hidden'); }
-                            else { S.recvFilesize.innerText = formatSize(shareReceivedBlob.size); S.downloadBtn.disabled = false; }
-                            setTimeout(() => S.recvProgress.classList.add('hidden'), 1000);
-                        }
-                    }
-                }, err => { S.recvFilesize.innerText = 'Connexion échouée.'; showToast('Erreur P2P: ' + err.message, 'error'); });
-                */
-                return;
-            }
-            let header, payload;
-            if (hash.startsWith('AETHER|')) {
-                const p = hash.split('|'); header = JSON.parse(ShareEncoder.b64ToStr(p[1])); payload = p[2];
-            } else {
-                const p = hash.split('|');
-                if (p[0] === 'SECURE') { header = { filename: decodeURIComponent(p[1]), encrypted: true, salt: p[2], iv: p[3] }; payload = p[4]; }
-                else { header = { filename: decodeURIComponent(p[0]), encrypted: false }; payload = p[1]; }
-            }
-            shareReceivedHeader = header; shareReceivedHeader.payload = payload;
-            S.recvFilename.innerText = (header.encrypted ? '🔒 ' : '') + header.filename;
-            if (header.expiry && typeof Features !== 'undefined') { const st = Features.checkExpiry(header.expiry); if (st.expired) { S.recvFilename.innerText = '💥 Lien Expiré'; S.recvFilesize.innerText = 'Auto-détruit.'; return; } }
-            if (header.geo && typeof Features !== 'undefined') { S.recvFilesize.innerText = 'Vérification position...'; const gs = await Features.verifyLocation(header.geo.lat, header.geo.lng); if (!gs.allowed) { S.recvFilename.innerText = '📍 Accès Refusé'; S.recvFilesize.innerText = gs.error || 'Mauvaise position.'; return; } }
-            if (header.vibe && typeof Features !== 'undefined') Features.applyVibe(header.vibe);
-            if (header.encrypted) { S.recvFilesize.innerText = 'Fichier Chiffré'; S.decryptPanel.classList.remove('hidden'); }
-            else { S.recvFilesize.innerText = 'Traitement...'; setTimeout(async () => { const cb = ShareEncoder.base64ToBlob(payload); shareReceivedBlob = await ShareEncoder.decompressBlob(cb); S.recvFilesize.innerText = formatSize(shareReceivedBlob.size); S.downloadBtn.disabled = false; }, 100); }
-        } catch(e) { S.recvFilename.innerText = 'Erreur de parsing'; S.recvFilesize.innerText = 'URL invalide'; }
-    }
-
-    handleShareRouting();
-    window.addEventListener('hashchange', handleShareRouting);
-
-    // ================================================================
-    //  ENHANCEMENT FEATURES
-    // ================================================================
-
-    // --- Web Worker ---
-    let obfWorker = null;
-    try { obfWorker = new Worker('worker.js'); } catch(e) { console.warn('Worker unavailable, using main thread'); }
-    function workerApply(algo, dataBuffer, w, h, seed, reverse, intensity) {
-        return new Promise((resolve, reject) => {
-            if (!obfWorker) { reject('no worker'); return; }
-            const id = Math.random();
-            const handler = e => { if (e.data.id === id) { obfWorker.removeEventListener('message', handler); if (e.data.error) reject(e.data.error); else resolve(new Uint8Array(e.data.result)); } };
-            obfWorker.addEventListener('message', handler);
-            const copy = dataBuffer.slice(0);
-            obfWorker.postMessage({ id, algo, data: copy, width: w, height: h, seed, reverse, intensity }, [copy]);
-        });
-    }
-
-    // --- DCT Steganography Helpers for DFWS ---
-    function calcMaxSecretSide(hostW, hostH) {
-        const bw = Math.floor(hostW / 8), bh = Math.floor(hostH / 8);
-        const totalPositions = bw * bh * 6; // 6 mid-freq positions per block
-        const usableBits = Math.floor(totalPositions / 3); // min 3× redundancy
-        const pixelBits = usableBits - 32; // 32-bit header
-        const pixels = Math.floor(pixelBits / 12); // 12 bits per pixel (4 per channel)
-        return Math.max(4, Math.floor(Math.sqrt(pixels)));
-    }
-
-    function downscaleImageForStego(sourceImg, maxSide) {
-        // Always produce square images for simpler extraction
-        const c = document.createElement('canvas');
-        c.width = maxSide; c.height = maxSide;
-        const ctx = c.getContext('2d');
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(sourceImg, 0, 0, maxSide, maxSide);
-        return ctx.getImageData(0, 0, maxSide, maxSide);
-    }
-
-    function workerApplyDFWS(dataBuffer, w, h, seed, reverse, intensity, secretImgData) {
-        return new Promise((resolve, reject) => {
-            if (!obfWorker) { reject('no worker'); return; }
-            const id = Math.random();
-            const handler = e => {
-                if (e.data.id === id) {
-                    obfWorker.removeEventListener('message', handler);
-                    if (e.data.error) reject(e.data.error);
-                    else resolve(new Uint8Array(e.data.result));
-                }
-            };
-            obfWorker.addEventListener('message', handler);
-            const msg = { id, algo: 'none', data: dataBuffer.slice(0), width: w, height: h, seed, reverse, intensity };
-            const transfers = [msg.data];
-            if (secretImgData) {
-                msg.secretImage = { data: secretImgData.data.buffer.slice(0), width: secretImgData.width, height: secretImgData.height };
-                transfers.push(msg.secretImage.data);
-            }
-            obfWorker.postMessage(msg, transfers);
-        });
-    }
-
-    function workerExtractWithDCT(algo, dataBuffer, w, h, seed) {
-        return new Promise((resolve, reject) => {
-            if (!obfWorker) { reject('no worker'); return; }
-            const id = Math.random();
-            const handler = e => {
-                if (e.data.id === id) {
-                    obfWorker.removeEventListener('message', handler);
-                    if (e.data.error) reject(e.data.error);
-                    else resolve({ pixels: new Uint8Array(e.data.result), extractedSecret: e.data.extractedSecret || null });
-                }
-            };
-            obfWorker.addEventListener('message', handler);
-            const copy = dataBuffer.slice(0);
-            obfWorker.postMessage({ id, algo, data: copy, width: w, height: h, seed, reverse: true, extractSecret: true, intensity: 1 }, [copy]);
-        });
-    }
-
-    function workerExtractDCTOnly(dataBuffer, w, h) {
-        return new Promise((resolve, reject) => {
-            if (!obfWorker) { reject('no worker'); return; }
-            const id = Math.random();
-            const handler = e => {
-                if (e.data.id === id) {
-                    obfWorker.removeEventListener('message', handler);
-                    if (e.data.error) reject(e.data.error);
-                    else resolve(e.data.extractedSecret || null);
-                }
-            };
-            obfWorker.addEventListener('message', handler);
-            const copy = dataBuffer.slice(0);
-            obfWorker.postMessage({ id, algo: 'dct-extract', data: copy, width: w, height: h, seed: '', reverse: false }, [copy]);
-        });
-    }
-
-    // --- Theme Toggle (Dark/Light) ---
-    const themeBtn = document.getElementById('theme-toggle');
-    if (localStorage.getItem('obscurify-theme') === 'light') { document.body.classList.add('light-mode'); themeBtn.textContent = '☀️'; }
-    themeBtn.addEventListener('click', () => {
+    // Theme Toggle
+    themeToggle.addEventListener('click', () => {
         document.body.classList.toggle('light-mode');
         const isLight = document.body.classList.contains('light-mode');
-        themeBtn.textContent = isLight ? '☀️' : '🌙';
-        localStorage.setItem('obscurify-theme', isLight ? 'light' : 'dark');
+        themeToggle.textContent = isLight ? '☀️' : '🌙';
+        localStorage.setItem('obscurify_theme', isLight ? 'light' : 'dark');
+    });
+    if (localStorage.getItem('obscurify_theme') === 'light') {
+        document.body.classList.add('light-mode');
+        themeToggle.textContent = '☀️';
+    }
+
+    // Audio Toggle
+    audioToggle.addEventListener('click', () => {
+        SoundManager.enabled = !SoundManager.enabled;
+        audioToggle.textContent = SoundManager.enabled ? '🔊' : '🔇';
+        audioToggle.title = SoundManager.enabled ? 'Effets sonores (Activé)' : 'Effets sonores (Muet)';
     });
 
-    // --- Password Strength Meter ---
-    const pwdFill = document.getElementById('pwd-strength-fill');
-    const pwdText = document.getElementById('pwd-strength-text');
-    obfPwd.addEventListener('input', () => {
-        const p = obfPwd.value, len = p.length;
-        let score = 0;
-        if (len >= 6) score += 20; if (len >= 10) score += 20; if (len >= 14) score += 10;
-        if (/[A-Z]/.test(p)) score += 10; if (/[a-z]/.test(p)) score += 10;
-        if (/[0-9]/.test(p)) score += 10; if (/[^A-Za-z0-9]/.test(p)) score += 20;
-        score = Math.min(100, score);
-        pwdFill.style.width = score + '%';
-        const colors = ['#ff4444', '#ff8800', '#ffcc00', '#88cc00', '#00cc44'];
-        const labels = ['Très faible', 'Faible', 'Moyen', 'Fort', 'Excellent'];
-        const idx = Math.min(4, Math.floor(score / 25));
-        pwdFill.style.background = colors[idx];
-        pwdText.textContent = len ? labels[idx] : '';
-        pwdText.style.color = colors[idx];
+    // Help Modal
+    helpToggle.addEventListener('click', () => helpModal.classList.add('active'));
+    btnCloseHelp.addEventListener('click', () => helpModal.classList.remove('active'));
+    helpModal.addEventListener('click', (e) => { if (e.target === helpModal) helpModal.classList.remove('active'); });
+
+    // Accordion
+    advTrigger.addEventListener('click', () => advAccordion.classList.toggle('open'));
+
+    // Secret File Dropzone & External Payload Handler
+    if (secretFileDropzone && embedSecretFile) {
+        secretFileDropzone.addEventListener('click', (e) => {
+            if (e.target.closest('#btn-clear-secret')) return;
+            embedSecretFile.click();
+        });
+
+        ['dragenter', 'dragover'].forEach(ev => {
+            secretFileDropzone.addEventListener(ev, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                secretFileDropzone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(ev => {
+            secretFileDropzone.addEventListener(ev, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                secretFileDropzone.classList.remove('dragover');
+            });
+        });
+
+        secretFileDropzone.addEventListener('drop', (e) => {
+            if (e.dataTransfer.files && e.dataTransfer.files.length) {
+                handleSecretFileChosen(e.dataTransfer.files[0]);
+            }
+        });
+
+        embedSecretFile.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files.length) {
+                handleSecretFileChosen(e.target.files[0]);
+            }
+        });
+
+        if (btnClearSecret) {
+            btnClearSecret.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectedSecretFile = null;
+                embedSecretFile.value = '';
+                secretFileNameLabel.textContent = 'Cliquez pour choisir un document secret';
+                secretFileSizeLabel.textContent = 'Modulation DCT : survit au réencodage JPG et conversion';
+                btnClearSecret.classList.add('hidden');
+                secretFileDropzone.classList.remove('has-file');
+                updateSecurityScore();
+                showToast('Document secret retiré.', 'info');
+            });
+        }
+    }
+
+    function handleSecretFileChosen(file) {
+        selectedSecretFile = file;
+        secretFileNameLabel.textContent = file.name;
+        const sizeKb = (file.size / 1024).toFixed(1);
+        secretFileSizeLabel.textContent = `${sizeKb} KB · ${file.type || 'Fichier binaire'} · Prêt pour modulation DCT`;
+        if (btnClearSecret) btnClearSecret.classList.remove('hidden');
+        if (secretFileDropzone) secretFileDropzone.classList.add('has-file');
+        dctPixelCb.checked = true;
+        updateSecurityScore();
+        SoundManager.play('click');
+        showToast(`Document secret chargé : ${file.name} (${sizeKb} KB)`, 'success');
+    }
+
+    // Watermark toggle
+    watermarkToggle.addEventListener('change', () => {
+        watermarkBox.classList.toggle('hidden', !watermarkToggle.checked);
         updateSecurityScore();
     });
 
-    // --- Security Score Gauge ---
-    const gaugeArc = document.getElementById('gauge-arc');
-    const gaugeVal = document.getElementById('gauge-value');
-    const gaugeLabel = document.getElementById('gauge-label');
+    // Password Visibility Toggles
+    togglePwdVisibility.addEventListener('click', () => {
+        obfPwd.type = obfPwd.type === 'password' ? 'text' : 'password';
+        togglePwdVisibility.textContent = obfPwd.type === 'password' ? '👁️' : '🔒';
+    });
+    toggleRevPwd.addEventListener('click', () => {
+        revertPwd.type = revertPwd.type === 'password' ? 'text' : 'password';
+        toggleRevPwd.textContent = revertPwd.type === 'password' ? '👁️' : '🔒';
+    });
+
+    // Copy Buttons
+    document.querySelectorAll('[data-copy]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetEl = document.getElementById(btn.dataset.copy);
+            if (targetEl && targetEl.textContent) {
+                navigator.clipboard.writeText(targetEl.textContent.trim());
+                showToast('Empreinte copiée dans le presse-papier !', 'success');
+            }
+        });
+    });
+    btnCopyHash.addEventListener('click', () => {
+        if (hashValue.textContent) {
+            navigator.clipboard.writeText(hashValue.textContent.trim());
+            showToast('Hash SHA-256 copié !', 'success');
+        }
+    });
+
+    // Glitch Slider
+    glitchIntensity.addEventListener('input', () => {
+        glitchValText.textContent = `${glitchIntensity.value}%`;
+        updateSecurityScore();
+    });
+
+    // ========================================================================
+    // PASSWORD STRENGTH & SECURITY GAUGE EVALUATION
+    // ========================================================================
+    obfPwd.addEventListener('input', () => {
+        const evalRes = CryptoEngine.evaluateEntropy(obfPwd.value);
+        document.getElementById('pwd-entropy-text').textContent = evalRes.text;
+        document.getElementById('pwd-crack-time').textContent = `Estimation : ${evalRes.crackTime}`;
+
+        const colors = ['', 'var(--accent-rose)', 'var(--accent-amber)', 'var(--primary)', 'var(--accent-emerald)'];
+        for (let i = 1; i <= 4; i++) {
+            const seg = document.getElementById(`pwd-seg-${i}`);
+            seg.style.backgroundColor = (i <= evalRes.level && evalRes.level > 0) ? colors[evalRes.level] : 'rgba(255,255,255,0.08)';
+        }
+        updateSecurityScore();
+    });
+
     function updateSecurityScore() {
         let score = 0;
         const algo = algoSelect.value;
-        const destructives = ['quantize-shuffle','color-crush','blur-noise','salt-pepper'];
-        if (algo === 'none') score += 5;
-        else score += destructives.includes(algo) ? 10 : 20;
         const pwd = obfPwd.value;
-        if (pwd.length >= 6) score += 15; if (pwd.length >= 10) score += 10; if (pwd.length >= 14) score += 5;
-        if (/[^A-Za-z0-9]/.test(pwd)) score += 5;
-        if (embedOriginalCb.checked || otherImageFile) score += 15;
-        if (obfSig.value) score += 10;
-        const sigLoc = document.getElementById('sig-location');
-        if (sigLoc && sigLoc.value === 'lsb' && obfSig.value) score += 5;
-        const wmToggle = document.getElementById('watermark-toggle');
-        if (wmToggle && wmToggle.checked) score += 10;
-        const glitch = document.getElementById('glitch-slider');
-        if (glitch && parseInt(glitch.value) === 100) score += 5;
-        score = Math.min(100, score);
-        const dashLen = (score / 100) * 157;
-        gaugeArc.setAttribute('stroke-dasharray', dashLen + ' 157');
-        const colors = ['#ff4444','#ff8800','#ffcc00','#88cc00','#00cc44'];
-        const labels = ['Vulnérable','Faible','Moyen','Fort','Blindé'];
-        const idx = Math.min(4, Math.floor(score / 25));
-        gaugeArc.setAttribute('stroke', colors[idx]);
-        gaugeVal.textContent = score;
-        gaugeLabel.textContent = labels[idx];
+        const evalRes = CryptoEngine.evaluateEntropy(pwd);
+
+        // 1. Algorithm strength (0-35 pts)
+        if (algo === 'xor-shuffle' || algo === 'cat-map' || algo === 'dfws' || algo === 'robust-dct-scramble') score += 35;
+        else if (algo.startsWith('block-shuffle') || algo === 'logistic-xor' || algo === 'baker-map') score += 30;
+        else if (algo === 'none') score += 20;
+        else if (['affine-map', 'wave-shift', 'prime-scatter'].includes(algo)) score += 25;
+        else score += 15; // destructive
+
+        // 2. Password & Key Derivation (0-35 pts)
+        if (pwd) {
+            score += Math.min(35, evalRes.level * 8 + (robustModeCb.checked ? 5 : 0));
+        }
+
+        // 3. Metadata & Privacy hygiene (0-15 pts)
+        if (stripExifCb.checked) score += 10;
+        if (embedOriginalCb.checked) score += 5;
+
+        // 4. Advanced Watermark / DCT & Hidden File (0-15 pts)
+        if (watermarkToggle.checked && watermarkText.value.trim()) score += 8;
+        if (dctPixelCb.checked) score += 7;
+        if (selectedSecretFile) score += 10;
+
+        // Glitch penalty if < 100%
+        const intensity = parseInt(glitchIntensity.value, 10);
+        if (intensity < 100) score = Math.round(score * (intensity / 100));
+
+        score = Math.max(5, Math.min(100, score));
+
+        // Update Gauge UI
+        const circumference = 264; // 2 * PI * 42
+        const offset = circumference - (score / 100) * circumference;
+        gaugeCircle.style.strokeDashoffset = offset;
+        gaugePercent.textContent = `${score}%`;
+
+        if (score >= 85) {
+            gaugeCircle.style.stroke = 'var(--accent-emerald)';
+            gaugeStatusTitle.textContent = 'Protection Maximale';
+            gaugeStatusDesc.textContent = 'Chiffrement robuste, réversibilité intégrale et métadonnées nettoyées.';
+        } else if (score >= 60) {
+            gaugeCircle.style.stroke = 'var(--primary)';
+            gaugeStatusTitle.textContent = 'Protection Élevée';
+            gaugeStatusDesc.textContent = 'Bonne résistance. Ajoutez un mot de passe plus long pour un niveau militaire.';
+        } else if (score >= 35) {
+            gaugeCircle.style.stroke = 'var(--accent-amber)';
+            gaugeStatusTitle.textContent = 'Protection Modérée';
+            gaugeStatusDesc.textContent = 'L\'image est obfusquée visuellement mais peut être restaurée publiquement.';
+        } else {
+            gaugeCircle.style.stroke = 'var(--accent-rose)';
+            gaugeStatusTitle.textContent = 'Protection Basique';
+            gaugeStatusDesc.textContent = 'Transformation visuelle simple ou perte de données irréversible.';
+        }
     }
-    const COMPRESSION_DATA = {
-        'none':             { level: '—',  color: '#94a3b8', desc: 'Aucune obfuscation. Le fichier caché survit si exporté en PNG.' },
-        'xor-shuffle':      { level: '🟢 Forte', color: '#10b981', desc: 'Déplacement massif de pixels. L\'image reste visuellement brouillée même après JPEG Q30.' },
-        'logistic-xor':     { level: '🟢 Forte', color: '#10b981', desc: 'Chaos non-linéaire. Brouillage total très résistant à toute compression.' },
-        'cat-map':          { level: '🟢 Forte', color: '#10b981', desc: 'Permutation fractale. La torsion globale survit à JPEG Q50+.' },
-        'baker-map':        { level: '🟢 Forte', color: '#10b981', desc: 'Découpage en bandes. Effet visible même après compression lourde.' },
-        'affine-map':       { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Décalage linéaire modulo. Les motifs réguliers sont partiellement lissés par JPEG.' },
-        'wave-shift':       { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Ondulations sinusoïdales. Les basses fréquences survivent, les détails fins sont perdus.' },
-        'prime-scatter':    { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Dispersion par nombres premiers. Effet partiel après JPEG Q60+.' },
-        'rgb-shift':        { level: '🔴 Faible', color: '#ef4444', desc: 'Décalage de canaux. JPEG fusionne les couleurs voisines, réduisant l\'effet visible.' },
-        'hilbert':          { level: '🟢 Forte', color: '#10b981', desc: 'Courbe de remplissage. Redistribution totale des pixels, très résistant.' },
-        'spiral':           { level: '🟢 Forte', color: '#10b981', desc: 'Réorganisation en spirale. Brouillage fort résistant à la compression.' },
-        'zigzag':           { level: '🟢 Forte', color: '#10b981', desc: 'Parcours diagonal JPEG-like. Survit bien car aligné sur la structure DCT.' },
-        'chirikov':         { level: '🟢 Forte', color: '#10b981', desc: 'Map standard chaotique. Déplacement non-linéaire massif, très résistant.' },
-        'henon':            { level: '🟢 Forte', color: '#10b981', desc: 'Attracteur chaotique. Dispersion fractalique très résistante.' },
-        'rubik':            { level: '🟢 Forte', color: '#10b981', desc: 'Rotation de plans RGB. Effet de brouillage survit à toute compression.' },
-        'block-shuffle-8':  { level: '⭐ RÉVERSIBLE', color: '#8b5cf6', desc: 'Permutation de blocs 8×8 (aligné JPEG). Réversible même après compression JPEG Q50+ / WhatsApp.', compReversible: true },
-        'block-shuffle-16': { level: '⭐ RÉVERSIBLE', color: '#8b5cf6', desc: 'Permutation de blocs 16×16. Plus robuste aux redimensionnements. Réversible après recompression.', compReversible: true },
-        'dfws':             { level: '\ud83d\udee1\ufe0f DFWS', color: '#f59e0b', desc: 'DualsFWShield — Cache l\'image originale directement dans les pixels (DCT). Résiste JPEG, WhatsApp, screenshot. L\'image cachée est extraite même sans métadonnées.', compReversible: true },
-        'quantize-shuffle': { level: '🟢 Forte', color: '#10b981', desc: 'Quantification + permutation. La pixélisation résiste naturellement à JPEG.' },
-        'color-crush':      { level: '🟢 Forte', color: '#10b981', desc: 'Palette réduite. Le broyage de couleurs est amplifié par la compression.' },
-        'blur-noise':       { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Flou + bruit. Le bruit est lissé par JPEG mais le flou persiste.' },
-        'salt-pepper':      { level: '🟡 Moyenne', color: '#f59e0b', desc: 'Pixels aléatoires noir/blanc. JPEG lisse les points isolés.' }
-    };
-    function updateCompressionInfo() {
-        const info = document.getElementById('algo-compression-info');
-        if (!info) return;
-        const algo = algoSelect.value;
-        const data = COMPRESSION_DATA[algo];
-        if (!data || algo === 'none') { info.style.display = 'none'; return; }
-        info.style.display = 'block';
-        const revNote = data.compReversible
-            ? '<br><span style="color:#10b981;font-size:0.65rem;">✅ Cet algo est RÉVERSIBLE même après compression JPEG / envoi WhatsApp. La qualité sera légèrement dégradée par la compression mais l\'image sera restaurée.</span>'
-            : '<br><span style="color:#f59e0b;font-size:0.65rem;">⚠️ Reversibilité math. perdue après compression JPEG — exporter en PNG pour restaurer.</span>';
-        info.innerHTML = `<span style="color:${data.color};font-weight:600;">${data.level}</span> — ${data.desc}${revNote}`;
+
+    // ========================================================================
+    // PRESETS MANAGEMENT
+    // ========================================================================
+    document.querySelectorAll('[data-preset]').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('[data-preset]').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            const preset = chip.dataset.preset;
+
+            if (preset === 'max-sec') {
+                algoSelect.value = 'robust-dct-scramble';
+                stripExifCb.checked = true;
+                embedOriginalCb.checked = true;
+                dctPixelCb.checked = true;
+                robustModeCb.checked = true;
+                glitchIntensity.value = 100;
+                glitchValText.textContent = '100%';
+            } else if (preset === 'anti-social') {
+                algoSelect.value = 'dfws';
+                stripExifCb.checked = true;
+                embedOriginalCb.checked = true;
+                dctPixelCb.checked = true;
+                robustModeCb.checked = true;
+                glitchIntensity.value = 100;
+                glitchValText.textContent = '100%';
+            } else if (preset === 'stealth-stego') {
+                algoSelect.value = 'none';
+                stripExifCb.checked = true;
+                embedOriginalCb.checked = false;
+                dctPixelCb.checked = true;
+                glitchIntensity.value = 100;
+                glitchValText.textContent = '100%';
+            } else if (preset === 'art-glitch') {
+                algoSelect.value = 'cat-map';
+                stripExifCb.checked = false;
+                embedOriginalCb.checked = true;
+                glitchIntensity.value = 75;
+                glitchValText.textContent = '75%';
+            }
+
+            updateAlgoTag();
+            updateSecurityScore();
+            showToast(`Profil "${chip.querySelector('strong').textContent}" appliqué`, 'info');
+        });
+    });
+
+    function updateAlgoTag() {
+        const val = algoSelect.value;
+        if (['quantize-shuffle', 'color-crush', 'blur-noise', 'salt-pepper'].includes(val)) {
+            algoTypeTag.textContent = '⚠️ Destructif';
+            algoTypeTag.style.color = 'var(--accent-rose)';
+            algoTypeTag.style.borderColor = 'rgba(244,63,94,0.3)';
+        } else if (['dfws', 'block-shuffle-8', 'block-shuffle-16', 'robust-dct-scramble'].includes(val)) {
+            algoTypeTag.textContent = '🛡️ Résistant WhatsApp & JPEG';
+            algoTypeTag.style.color = 'var(--accent-emerald)';
+            algoTypeTag.style.borderColor = 'rgba(16,185,129,0.3)';
+        } else if (val === 'none') {
+            algoTypeTag.textContent = '🔒 Stégano Pure';
+            algoTypeTag.style.color = 'var(--primary-light)';
+            algoTypeTag.style.borderColor = 'rgba(99,102,241,0.3)';
+        } else {
+            algoTypeTag.textContent = '100% Réversible';
+            algoTypeTag.style.color = 'var(--accent-emerald)';
+            algoTypeTag.style.borderColor = 'rgba(16,185,129,0.3)';
+        }
     }
     algoSelect.addEventListener('change', () => {
-        updateSecurityScore();
-        updateCompressionInfo();
-        const destructives = ['quantize-shuffle','color-crush','blur-noise','salt-pepper'];
-        const warn = document.getElementById('algo-warning');
-        if (warn) warn.classList.toggle('hidden', !destructives.includes(algoSelect.value));
-        // Show/hide stego notice for 'none' mode
-        const noneNotice = document.getElementById('algo-none-notice');
-        if (noneNotice) noneNotice.classList.toggle('hidden', algoSelect.value !== 'none');
-    });
-    updateCompressionInfo();
-    embedOriginalCb.addEventListener('change', updateSecurityScore);
-    obfSig.addEventListener('input', updateSecurityScore);
-    document.getElementById('watermark-toggle')?.addEventListener('change', updateSecurityScore);
-    document.getElementById('glitch-slider')?.addEventListener('input', e => {
-        document.getElementById('glitch-value').textContent = e.target.value;
-        const warn = document.getElementById('glitch-warning');
-        if (warn) warn.classList.toggle('hidden', parseInt(e.target.value) >= 100);
+        updateAlgoTag();
         updateSecurityScore();
     });
-    updateSecurityScore();
 
-    // --- Watermark Toggle ---
-    const wmToggle = document.getElementById('watermark-toggle');
-    const wmInput = document.getElementById('watermark-input');
-    wmToggle?.addEventListener('change', () => wmInput.classList.toggle('hidden', !wmToggle.checked));
-    document.querySelectorAll('input[name="wm-mode"]').forEach(r => r.addEventListener('change', () => {
-        const dctNotice = document.getElementById('wm-dct-notice');
-        const wmText = document.getElementById('watermark-text');
-        if (r.value === 'dct' && r.checked) {
-            dctNotice?.classList.remove('hidden');
-            if (wmText) { wmText.maxLength = 16; wmText.placeholder = 'Texte du watermark (max 16 car.)'; }
-        } else if (r.value === 'lsb' && r.checked) {
-            dctNotice?.classList.add('hidden');
-            if (wmText) { wmText.maxLength = 32; wmText.placeholder = 'Texte du watermark (max 32 car.)'; }
-        }
-        updateSecurityScore();
-    }));
-
-    // --- Spread-Spectrum Watermark ---
-    function embedWatermark(imgData, text) {
-        const bits = []; const bytes = new TextEncoder().encode(text.substring(0, 32));
-        for (let i = 0; i < 16; i++) bits.push((bytes.length >> i) & 1);
-        for (const b of bytes) for (let j = 0; j < 8; j++) bits.push((b >> j) & 1);
-        const step = Math.max(1, Math.floor(imgData.data.length / 4 / bits.length));
-        for (let i = 0; i < bits.length; i++) {
-            const px = i * step * 4 + 2;
-            if (px < imgData.data.length) imgData.data[px] = (imgData.data[px] & 0xFE) | bits[i];
-        }
-    }
-    function extractWatermark(imgData) {
-        let len = 0;
-        const totalBits = Math.floor(imgData.data.length / 4);
-        const guessStep = s => { let l = 0; for (let i = 0; i < 16; i++) { const px = i * s * 4 + 2; if (px < imgData.data.length) l |= (imgData.data[px] & 1) << i; } return l; };
-        for (let s = 1; s < 200; s++) { len = guessStep(s); if (len > 0 && len <= 32) { const bytes = new Uint8Array(len); for (let i = 0; i < len; i++) { let b = 0; for (let j = 0; j < 8; j++) { const px = (16 + i * 8 + j) * s * 4 + 2; if (px < imgData.data.length) b |= (imgData.data[px] & 1) << j; } bytes[i] = b; } try { const t = new TextDecoder().decode(bytes); if (/^[\x20-\x7E]+$/.test(t)) return t; } catch(e){} } }
-        return null;
-    }
-
-    // --- Sound Notifications ---
-    function playSound(type) {
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator(), gain = ctx.createGain();
-            osc.connect(gain); gain.connect(ctx.destination);
-            gain.gain.value = 0.15;
-            if (type === 'success') { osc.frequency.value = 880; osc.type = 'sine'; }
-            else if (type === 'error') { osc.frequency.value = 220; osc.type = 'square'; }
-            else { osc.frequency.value = 660; osc.type = 'sine'; }
-            osc.start(); osc.stop(ctx.currentTime + 0.15);
-        } catch(e) {}
-    }
-
-    // --- Konami Code ---
-    const konamiSeq = [38,38,40,40,37,39,37,39,66,65];
-    let konamiIdx = 0;
-    document.addEventListener('keydown', e => {
-        if (e.keyCode === konamiSeq[konamiIdx]) { konamiIdx++; if (konamiIdx === konamiSeq.length) { document.body.classList.toggle('konami-mode'); showToast('🌈 Mode Secret Activé !', 'success'); playSound('success'); konamiIdx = 0; } }
-        else konamiIdx = 0;
-    });
-
-    // --- Comparison Slider ---
-    let compareOrigData = null, compareObfData = null, compareW = 0, compareH = 0;
-    const compareContainer = document.getElementById('compare-container');
-    const compareCanvas = document.getElementById('compare-canvas');
-    const compareHandle = document.getElementById('compare-handle');
-    let compareDragging = false, comparePos = 0.5;
-
-    function drawComparison() {
-        if (!compareOrigData || !compareObfData) return;
-        const ctx = compareCanvas.getContext('2d');
-        compareCanvas.width = compareW; compareCanvas.height = compareH;
-        const orig = new ImageData(new Uint8ClampedArray(compareOrigData), compareW, compareH);
-        const obf = new ImageData(new Uint8ClampedArray(compareObfData), compareW, compareH);
-        const splitX = Math.floor(compareW * comparePos);
-        ctx.putImageData(orig, 0, 0);
-        const obfCanvas = document.createElement('canvas');
-        obfCanvas.width = compareW; obfCanvas.height = compareH;
-        obfCanvas.getContext('2d').putImageData(obf, 0, 0);
-        ctx.drawImage(obfCanvas, splitX, 0, compareW - splitX, compareH, splitX, 0, compareW - splitX, compareH);
-        compareHandle.style.left = (comparePos * 100) + '%';
-    }
-
-    const slider = document.getElementById('compare-slider');
-    function startDrag(e) { compareDragging = true; moveDrag(e); }
-    function moveDrag(e) {
-        if (!compareDragging) return;
-        const rect = slider.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        comparePos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        drawComparison();
-    }
-    function endDrag() { compareDragging = false; }
-    slider.addEventListener('mousedown', startDrag); slider.addEventListener('touchstart', startDrag);
-    document.addEventListener('mousemove', moveDrag); document.addEventListener('touchmove', moveDrag);
-    document.addEventListener('mouseup', endDrag); document.addEventListener('touchend', endDrag);
-
-    // --- Effect Gallery ---
-    const galleryEl = document.getElementById('effect-gallery');
-    const algos = ['xor-shuffle','logistic-xor','cat-map','baker-map','affine-map','wave-shift','prime-scatter','rgb-shift','hilbert','spiral','zigzag','chirikov','henon','rubik','block-shuffle-8','block-shuffle-16','dfws','quantize-shuffle','color-crush','blur-noise','salt-pepper'];
-    const algoNames = ['XOR','Logistic','Cat Map','Baker','Affine','Wave','Prime','RGB','Hilbert','Spiral','Zigzag','Chirikov','H\u00e9non','Rubik','Bloc 8\u00d78','Bloc 16\u00d716','DFWS','Quantize','Crush','Blur','S&P'];
-    const REVERSIBLE_COUNT = 17; // first 17 are reversible, last 4 are destructive
-    function buildGallery() {
-        galleryEl.innerHTML = '';
-        if (!originalImageFile) { galleryEl.innerHTML = '<p style="grid-column:span 4;text-align:center;color:var(--text-muted);font-size:0.75rem;">Chargez une image pour voir les effets</p>'; return; }
-        const thumbSize = 64;
-        const thumbCanvas = document.createElement('canvas');
-        thumbCanvas.width = thumbSize; thumbCanvas.height = thumbSize;
-        const thumbCtx = thumbCanvas.getContext('2d');
-        thumbCtx.drawImage(uploadedImage, 0, 0, thumbSize, thumbSize);
-        const origData = thumbCtx.getImageData(0, 0, thumbSize, thumbSize);
-
-        // Section: "Aucun" (stego only)
-        const noneHeader = document.createElement('div');
-        noneHeader.className = 'gallery-section-header';
-        noneHeader.innerHTML = '🔒 St\u00e9go Pure';
-        noneHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:var(--primary);padding:4px 0;border-bottom:1px solid rgba(99,102,241,0.2);margin-bottom:2px;';
-        galleryEl.appendChild(noneHeader);
-        // None thumb = original image unchanged
-        const noneDiv = document.createElement('div');
-        noneDiv.className = 'effect-thumb' + (algoSelect.value === 'none' ? ' active' : '');
-        const noneCanvas = document.createElement('canvas');
-        noneCanvas.width = thumbSize; noneCanvas.height = thumbSize;
-        noneCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(origData.data), thumbSize, thumbSize), 0, 0);
-        noneDiv.appendChild(noneCanvas);
-        const noneLabel = document.createElement('div');
-        noneLabel.className = 'effect-thumb-label';
-        noneLabel.textContent = 'Aucun';
-        noneDiv.appendChild(noneLabel);
-        noneDiv.addEventListener('click', () => { algoSelect.value = 'none'; buildGallery(); updateSecurityScore(); });
-        galleryEl.appendChild(noneDiv);
-
-        // Section: Reversible
-        const revHeader = document.createElement('div');
-        revHeader.className = 'gallery-section-header';
-        revHeader.innerHTML = '\u2705 R\u00e9versibles';
-        revHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:#10b981;padding:6px 0 2px;border-bottom:1px solid rgba(16,185,129,0.2);margin-bottom:2px;margin-top:6px;';
-        galleryEl.appendChild(revHeader);
-
-        algos.forEach((algo, i) => {
-            // Insert compression-resistant header before block-shuffle algos
-            if (i === 14) {
-                const compHeader = document.createElement('div');
-                compHeader.className = 'gallery-section-header';
-                compHeader.innerHTML = '\u2b50 Anti-Compression';
-                compHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:#8b5cf6;padding:6px 0 2px;border-bottom:1px solid rgba(139,92,246,0.3);margin-bottom:2px;margin-top:6px;';
-                galleryEl.appendChild(compHeader);
-            }
-            // Insert destructive header before first destructive algo
-            if (i === REVERSIBLE_COUNT) {
-                const destHeader = document.createElement('div');
-                destHeader.className = 'gallery-section-header';
-                destHeader.innerHTML = '\u26a0\ufe0f Destructifs';
-                destHeader.style.cssText = 'grid-column:span 4;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:#f59e0b;padding:6px 0 2px;border-bottom:1px solid rgba(245,158,11,0.2);margin-bottom:2px;margin-top:6px;';
-                galleryEl.appendChild(destHeader);
-            }
-            const div = document.createElement('div');
-            div.className = 'effect-thumb' + (algoSelect.value === algo ? ' active' : '');
-            if (i >= REVERSIBLE_COUNT) div.style.borderColor = 'rgba(245,158,11,0.3)';
-            else if (i >= 14) div.style.borderColor = 'rgba(139,92,246,0.5)';
-            const c = document.createElement('canvas');
-            c.width = thumbSize; c.height = thumbSize;
-            const ctx = c.getContext('2d');
-            const copy = new ImageData(new Uint8ClampedArray(origData.data), thumbSize, thumbSize);
-            applyAlgorithm(copy, thumbSize, thumbSize, algo, 'gallery_preview_' + algo, false);
-            ctx.putImageData(copy, 0, 0);
-            div.appendChild(c);
-            // Compression resistance badge
-            const compData = COMPRESSION_DATA[algo];
-            if (compData) {
-                const badge = document.createElement('div');
-                badge.className = 'effect-thumb-badge';
-                badge.style.cssText = `position:absolute;top:3px;right:3px;width:10px;height:10px;border-radius:50%;background:${compData.color};border:1px solid rgba(0,0,0,0.3);`;
-                badge.title = compData.level + ' — ' + compData.desc;
-                div.appendChild(badge);
-            }
-            const label = document.createElement('div');
-            label.className = 'effect-thumb-label';
-            label.textContent = algoNames[i];
-            div.appendChild(label);
-            div.addEventListener('click', () => { algoSelect.value = algo; buildGallery(); updateSecurityScore(); updateCompressionInfo(); });
-            galleryEl.appendChild(div);
+    // ========================================================================
+    // FILE DRAG & DROP & PREVIEW LOADING
+    // ========================================================================
+    function setupDropZone(dropZone, fileInput, onFileSelected) {
+        dropZone.addEventListener('click', (e) => {
+            if (e.target.closest('.viewport-floating-bar') || e.target.closest('#compare-handle')) return;
+            fileInput.click();
         });
-    }
-    algoSelect.addEventListener('change', buildGallery);
-
-    // --- History (IndexedDB) ---
-    const DB_NAME = 'ObscurifyHistory', DB_VER = 1, STORE = 'history';
-    function openDB() {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open(DB_NAME, DB_VER);
-            req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
-            req.onsuccess = e => resolve(e.target.result);
-            req.onerror = e => reject(e.target.error);
-        });
-    }
-    async function addHistory(entry) {
-        const db = await openDB();
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).add(entry);
-    }
-    async function getHistory() {
-        const db = await openDB();
-        return new Promise(resolve => {
-            const tx = db.transaction(STORE, 'readonly');
-            const req = tx.objectStore(STORE).getAll();
-            req.onsuccess = () => resolve(req.result.reverse());
-        });
-    }
-    async function clearHistory() {
-        const db = await openDB();
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).clear();
-    }
-    async function renderHistory() {
-        const list = document.getElementById('history-list');
-        const empty = document.getElementById('history-empty');
-        const clearBtn = document.getElementById('history-clear');
-        const items = await getHistory();
-        if (!items.length) { list.innerHTML = ''; empty.classList.remove('hidden'); clearBtn.classList.add('hidden'); return; }
-        empty.classList.add('hidden'); clearBtn.classList.remove('hidden');
-        list.innerHTML = items.slice(0, 50).map(h => `<div class="history-card"><img class="history-thumb" src="${h.thumb}" alt=""><div class="history-info"><div class="h-name">${h.filename}</div><div class="h-meta">${new Date(h.date).toLocaleString('fr-FR')} · ${h.algo}</div></div><span class="history-badge">${h.algo}</span></div>`).join('');
-    }
-    document.getElementById('history-clear')?.addEventListener('click', async () => { await clearHistory(); renderHistory(); showToast('Historique effacé', 'info'); });
-
-    // Create thumbnail for history
-    function createThumb(img, size = 80) {
-        const c = document.createElement('canvas'); c.width = size; c.height = size;
-        c.getContext('2d').drawImage(img, 0, 0, size, size);
-        return c.toDataURL('image/webp', 0.5);
-    }
-
-    // --- SHA-256 Hash ---
-    async function computeSHA256(blob) {
-        const buf = await blob.arrayBuffer();
-        const hash = await crypto.subtle.digest('SHA-256', buf);
-        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    // --- GIF Export ---
-    const btnExportGif = document.getElementById('btn-export-gif');
-    btnExportGif?.addEventListener('click', async () => {
-        if (!originalImageFile || !compareOrigData || !compareObfData) { showToast('Offusquez d\'abord une image', 'error'); return; }
-        btnExportGif.disabled = true; btnExportGif.textContent = '⏳';
-        try {
-            const gif = new GIF({ workers: 2, quality: 10, width: compareW, height: compareH, workerScript: 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js' });
-            const c1 = document.createElement('canvas'); c1.width = compareW; c1.height = compareH;
-            c1.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(compareOrigData), compareW, compareH), 0, 0);
-            const c2 = document.createElement('canvas'); c2.width = compareW; c2.height = compareH;
-            c2.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(compareObfData), compareW, compareH), 0, 0);
-            gif.addFrame(c1, { delay: 1000, copy: true });
-            gif.addFrame(c2, { delay: 1000, copy: true });
-            gif.on('finished', blob => {
-                const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-                a.download = `obscurify_${Date.now()}.gif`; a.click();
-                showToast('GIF exporté !', 'success'); playSound('success');
-            });
-            gif.render();
-        } catch(e) { showToast('Erreur GIF: ' + e.message, 'error'); }
-        btnExportGif.disabled = false; btnExportGif.textContent = 'GIF';
-    });
-
-    // --- Batch File Support ---
-    let batchFiles = [];
-    function renderBatchThumbs() {
-        const container = document.getElementById('batch-thumbs');
-        if (!container) return;
-        container.innerHTML = '';
-        batchFiles.forEach((file, i) => {
-            const wrap = document.createElement('div');
-            wrap.className = 'batch-thumb-wrap';
-            wrap.draggable = true;
-            wrap.dataset.index = i;
-            const img = document.createElement('img');
-            img.className = 'batch-thumb';
-            img.src = URL.createObjectURL(file);
-            const num = document.createElement('div');
-            num.className = 'batch-thumb-num';
-            num.textContent = i + 1;
-            wrap.appendChild(img);
-            wrap.appendChild(num);
-            // Drag & Drop reorder
-            wrap.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', i); wrap.classList.add('dragging'); });
-            wrap.addEventListener('dragend', () => wrap.classList.remove('dragging'));
-            wrap.addEventListener('dragover', e => { e.preventDefault(); wrap.classList.add('drag-over'); });
-            wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over'));
-            wrap.addEventListener('drop', e => {
+        ['dragenter', 'dragover'].forEach(ev => {
+            dropZone.addEventListener(ev, (e) => {
                 e.preventDefault();
-                wrap.classList.remove('drag-over');
-                const from = parseInt(e.dataTransfer.getData('text/plain'));
-                const to = i;
-                if (from !== to) {
-                    const [moved] = batchFiles.splice(from, 1);
-                    batchFiles.splice(to, 0, moved);
-                    renderBatchThumbs();
-                }
+                dropZone.classList.add('dragover');
             });
-            container.appendChild(wrap);
+        });
+        ['dragleave', 'drop'].forEach(ev => {
+            dropZone.addEventListener(ev, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            });
+        });
+        dropZone.addEventListener('drop', (e) => {
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                onFileSelected(Array.from(e.dataTransfer.files));
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                onFileSelected(Array.from(e.target.files));
+            }
         });
     }
-    obfFile.addEventListener('change', e => {
-        const files = e.target.files;
-        if (files.length > 1) {
-            batchFiles = Array.from(files);
-            document.getElementById('batch-info').classList.remove('hidden');
-            document.getElementById('batch-count').textContent = batchFiles.length;
-            renderBatchThumbs();
-            const first = files[0];
-            originalImageFile = first;
-            uploadedImage.src = URL.createObjectURL(first);
-            obfPreview.src = uploadedImage.src;
-            obfDrop.querySelector('.drop-text').classList.add('hidden');
-            obfPreview.classList.remove('hidden');
-            uploadedImage.onload = () => { buildGallery(); updateSecurityScore(); };
-        } else if (files.length === 1) {
-            batchFiles = [];
-            document.getElementById('batch-info').classList.add('hidden');
-            document.getElementById('batch-thumbs').innerHTML = '';
-            uploadedImage.onload = () => { buildGallery(); updateSecurityScore(); };
+
+    setupDropZone(obfDropZone, obfFileInput, (files) => {
+        activeFiles = files;
+        if (files.length === 1) {
+            loadSingleImage(files[0]);
+            batchTray.classList.add('hidden');
+        } else if (files.length > 1) {
+            loadBatchImages(files);
         }
     });
 
-    // --- Override Obfuscate Button for Batch + Worker + Compare + History + Hash ---
-    const origObfHandler = btnObfuscate.onclick;
-    btnObfuscate.removeEventListener('click', () => {});
-    // We need to replace the existing click handler
-    const newObfuscateHandler = async () => {
-        const filesToProcess = batchFiles.length > 1 ? batchFiles : (originalImageFile ? [originalImageFile] : []);
-        if (!filesToProcess.length) return alert("Chargez une image d'abord.");
-        const pwd = obfPwd.value;
-        const sig = obfSig.value;
-        const algo = algoSelect.value;
-        const sigLoc = sigLocation?.value || 'meta';
-        const glitchIntensity = parseInt(document.getElementById('glitch-slider')?.value || 100) / 100;
-        const wmText = wmToggle?.checked ? document.getElementById('watermark-text')?.value : '';
-        const wmMode = document.querySelector('input[name="wm-mode"]:checked')?.value || 'lsb';
-        btnObfuscate.innerText = "Calculs..."; btnObfuscate.disabled = true;
-        const batchProg = document.getElementById('batch-progress');
-        const batchFill = document.getElementById('batch-progress-fill');
-        const batchText = document.getElementById('batch-progress-text');
-        if (filesToProcess.length > 1) batchProg.classList.remove('hidden');
+    const btnLoadDemo = document.getElementById('btn-load-demo');
+    if (btnLoadDemo) {
+        btnLoadDemo.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showToast('Chargement de l\'image démo...', 'info');
 
-        for (let fi = 0; fi < filesToProcess.length; fi++) {
-            const file = filesToProcess[fi];
-            if (filesToProcess.length > 1) {
-                batchFill.style.width = ((fi / filesToProcess.length) * 100) + '%';
-                batchText.textContent = `Image ${fi + 1} / ${filesToProcess.length}`;
-            }
-            try {
-                const img = new Image();
-                img.src = URL.createObjectURL(file);
-                await new Promise(r => img.onload = r);
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width; canvas.height = img.height;
-                const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                ctx.drawImage(img, 0, 0);
-                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const isRobust = document.getElementById('robust-mode')?.checked;
-                let internalSalt = crypto.randomUUID();
-                if (isRobust && pwd) {
-                    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + "OBSCURE_FIXED_SALT_v1"));
-                    internalSalt = Array.from(new Uint8Array(hash).slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
-                }
-                const seed = pwd ? pwd + internalSalt : 'public' + internalSalt;
-
-                // Store original for comparison
-                if (fi === 0) { compareOrigData = new Uint8Array(imgData.data); compareW = canvas.width; compareH = canvas.height; }
-
-                // Apply algorithm (try worker first) — skip for 'none'
-                if (algo !== 'none') {
-                    try {
-                        const result = await workerApply(algo, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, false, glitchIntensity);
-                        imgData.data.set(result);
-                    } catch(e) {
-                        applyAlgorithm(imgData, canvas.width, canvas.height, algo, seed, false);
-                    }
-                }
-
-                // DCT Pixel Steganography: embed original in pixels for ANY algo
-                const dctPixelEnabled = document.getElementById('dct-pixel-toggle')?.checked;
-                if (dctPixelEnabled && embedOriginalCb.checked) {
-                    try {
-                        const maxSide = calcMaxSecretSide(canvas.width, canvas.height);
-                        const secretImgData = downscaleImageForStego(img, maxSide);
-                        const result = await workerApplyDFWS(
-                            imgData.data.buffer.slice(0), canvas.width, canvas.height,
-                            seed, false, 1, secretImgData
-                        );
-                        imgData.data.set(result);
-                        showToast(`🔒 Image cachée dans les pixels (${secretImgData.width}×${secretImgData.height})`, 'info');
-                    } catch(e) {
-                        console.warn('DCT pixel embedding failed:', e);
-                    }
-                }
-
-                // Watermark (LSB or DCT)
-                let activeWmText = wmText;
-                let activeWmMode = wmMode;
-                if (algo === 'dfws') {
-                    activeWmText = `DIM:${imgData.width}:${imgData.height}:DFWS`;
-                    activeWmMode = 'dct';
-                }
-                if (activeWmText) {
-                    if (activeWmMode === 'dct') RobustWatermark.embed(imgData, activeWmText);
-                    else embedWatermark(imgData, activeWmText);
-                }
-
-                let metadata = { v: 5, alg: algo, pwd: !!pwd, salt: internalSalt, mime: file.type };
-                if (isRobust) metadata.robust = true;
-                if (activeWmText) { metadata.wm = true; metadata.wmMode = activeWmMode; }
-                if (document.getElementById('dct-pixel-toggle')?.checked && embedOriginalCb.checked) metadata.dctStego = true;
-
-                let fileToEmbed = null;
-                if (otherImageFile) fileToEmbed = otherImageFile;
-                else if (embedOriginalCb.checked) fileToEmbed = file;
-                if (fileToEmbed) {
-                    const buf = await fileToEmbed.arrayBuffer();
-                    const comp = await compressData(buf);
-                    const shouldEncrypt = document.getElementById('stego-encrypt')?.checked && pwd;
-                    let payload;
-                    if (shouldEncrypt) {
-                        const { encrypted, salt: pSalt, iv: pIv } = await encryptData(comp, pwd);
-                        payload = { data: arrayBufferToBase64(encrypted), salt: pSalt ? arrayBufferToBase64(pSalt) : null, iv: pIv ? arrayBufferToBase64(pIv) : null, enc: true };
-                    } else {
-                        payload = { data: arrayBufferToBase64(comp), enc: false };
-                    }
-                    metadata.payload = { ...payload, mime: fileToEmbed.type || 'application/octet-stream', filename: fileToEmbed.name };
-                }
-
-                let sigPayload = null;
-                if (sig) {
-                    const comp = await compressData(new TextEncoder().encode(sig));
-                    const { encrypted, salt: ss, iv: si } = await encryptData(comp, pwd);
-                    sigPayload = { data: arrayBufferToBase64(encrypted), salt: ss ? arrayBufferToBase64(ss) : null, iv: si ? arrayBufferToBase64(si) : null };
-                }
-                if (sigPayload && sigLoc === 'lsb') { try { encodeLSB(imgData, new TextEncoder().encode("LSB_SIG:" + JSON.stringify(sigPayload))); } catch(e) { metadata.sig = sigPayload; } }
-                else if (sigPayload) metadata.sig = sigPayload;
-
-                // Store obfuscated for comparison
-                if (fi === 0) { compareObfData = new Uint8Array(imgData.data); }
-
-                ctx.putImageData(imgData, 0, 0);
-                const exportFormat = document.getElementById('export-format')?.value || 'image/png';
-                const exportQuality = exportFormat === 'image/jpeg' ? 0.92 : undefined;
-                const visualBlob = await new Promise(r => canvas.toBlob(r, exportFormat, exportQuality));
-                const tail = new TextEncoder().encode(JSON.stringify(metadata) + MAGIC_MARKER);
-                const finalBlob = new Blob([visualBlob, tail], { type: exportFormat });
-
-                // SHA-256
-                if (fi === 0) {
-                    const hash = await computeSHA256(finalBlob);
-                    document.getElementById('hash-value').textContent = hash;
-                    document.getElementById('integrity-hash').classList.remove('hidden');
-                }
-
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(finalBlob);
-                a.download = `obscurify_${Date.now()}_${fi}.${exportFormat.split('/')[1]}`;
-                a.click(); URL.revokeObjectURL(a.href);
-
-                // History
-                try { await addHistory({ date: Date.now(), filename: file.name, algo, thumb: createThumb(img) }); } catch(e) {}
-
-            } catch(e) { console.error(e); alert("Erreur: " + e.message); }
-        }
-
-        // Show comparison
-        if (compareOrigData && compareObfData) {
-            compareContainer.classList.remove('hidden');
-            comparePos = 0.5;
-            drawComparison();
-        }
-
-        batchProg.classList.add('hidden');
-        btnObfuscate.innerText = "Offusquer & Télécharger";
-        btnObfuscate.disabled = false;
-        playSound('success');
-        showToast(filesToProcess.length > 1 ? `${filesToProcess.length} images traitées !` : 'Image offusquée !', 'success');
-        renderHistory();
-    };
-
-    // Replace the old handler
-    btnObfuscate.replaceWith(btnObfuscate.cloneNode(true));
-    const newBtn = document.getElementById('btn-obfuscate');
-    newBtn.addEventListener('click', newObfuscateHandler);
-
-    // Also update revert to extract watermark
-    const oldRevertBtn = document.getElementById('btn-revert');
-    const revertClone = oldRevertBtn.cloneNode(true);
-    oldRevertBtn.replaceWith(revertClone);
-    revertClone.addEventListener('click', async () => {
-        if (!targetObfuscatedFile) return alert("Sélectionnez l'image.");
-        revertClone.innerText = "Restauration..."; revertClone.disabled = true;
-        revertResult.classList.add('hidden'); revertHiddenContainer.classList.add('hidden');
-        revertSigContainer.classList.add('hidden');
-        document.getElementById('revert-watermark-container')?.classList.add('hidden');
-        try {
-            const buf = await targetObfuscatedFile.arrayBuffer();
-            const tailString = new TextDecoder().decode(buf.slice(Math.max(0, buf.byteLength - 1000000)));
-            const magicIdx = tailString.lastIndexOf(MAGIC_MARKER);
-            
-            let meta, normalizedCanvas = null;
-            if (magicIdx === -1) {
-                // FALLBACK: Metadata lost (Crop/JPEG/Screenshot)
-                const fbCanvas = document.createElement('canvas');
-                fbCanvas.width = targetObfuscatedImage.width; fbCanvas.height = targetObfuscatedImage.height;
-                const fbCtx = fbCanvas.getContext('2d');
-                fbCtx.drawImage(targetObfuscatedImage, 0, 0);
-                const fbImgData = fbCtx.getImageData(0, 0, fbCanvas.width, fbCanvas.height);
-                const wmDim = RobustWatermark.getDimensions(fbImgData);
-                // Also try DCT pixel-level extraction
-                let dctFallback = null;
+            const demoImg = new Image();
+            demoImg.onload = () => {
                 try {
-                    dctFallback = await workerExtractDCTOnly(fbImgData.data.buffer.slice(0), fbCanvas.width, fbCanvas.height);
-                } catch(e) { console.warn('DCT fallback extraction failed:', e); }
-                if (wmDim && wmDim.w && wmDim.h) {
-                    showToast(`🔍 Watermark détecté: DFWS (${wmDim.w}x${wmDim.h})`, "info");
-                    meta = { v: 5, alg: 'dfws', pwd: false, robust: true, salt: 'public' };
-                    normalizedCanvas = document.createElement('canvas');
-                    normalizedCanvas.width = wmDim.w; normalizedCanvas.height = wmDim.h;
-                    normalizedCanvas.getContext('2d').drawImage(targetObfuscatedImage, 0, 0, wmDim.w, wmDim.h);
-                } else if (dctFallback) {
-                    // No watermark but DCT secret found in pixels!
-                    showToast(`🔍 Image secrète trouvée dans les pixels (${dctFallback.width}×${dctFallback.height})`, "info");
-                    meta = { v: 5, alg: 'dfws', pwd: false, robust: true, salt: 'public' };
-                } else {
-                    throw new Error("Métadonnées, Watermark et stégo DCT absents. Image non reconnue.");
-                }
-                // Show DCT secret immediately if found (metadata lost = this is the primary recovery)
-                if (dctFallback) {
-                    const secretCanvas = document.createElement('canvas');
-                    secretCanvas.width = dctFallback.width; secretCanvas.height = dctFallback.height;
-                    secretCanvas.getContext('2d').putImageData(
-                        new ImageData(new Uint8ClampedArray(dctFallback.data), dctFallback.width, dctFallback.height), 0, 0
-                    );
-                    const displayW = Math.min(512, targetObfuscatedImage.width);
-                    const displayH = Math.round(displayW * dctFallback.height / dctFallback.width);
-                    const displayCanvas = document.createElement('canvas');
-                    displayCanvas.width = displayW; displayCanvas.height = displayH;
-                    const dCtx = displayCanvas.getContext('2d');
-                    dCtx.imageSmoothingEnabled = true;
-                    dCtx.drawImage(secretCanvas, 0, 0, displayW, displayH);
-                    const dctBlob = await new Promise(r => displayCanvas.toBlob(r, 'image/png'));
-                    if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
-                    currentHiddenObjectUrl = URL.createObjectURL(dctBlob);
-                    revertHiddenPreview.src = currentHiddenObjectUrl;
-                    revertHiddenContainer.classList.remove('hidden');
-                    const h3El = revertHiddenContainer.querySelector('h3');
-                    if (h3El) h3El.innerHTML = 'Image Originale Extraite (Pixels DCT) 🔍 <small style="font-weight:normal;color:var(--text-muted);">' + dctFallback.width + '×' + dctFallback.height + ' — résistant compression</small>';
-                }
-            } else {
-                const jsonStart = tailString.substring(0, magicIdx).lastIndexOf('{"v":5');
-                if (jsonStart === -1) throw new Error("Métadonnées altérées.");
-                meta = JSON.parse(tailString.substring(jsonStart, magicIdx));
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(targetObfuscatedImage, 0, 0);
-                const wmDim = RobustWatermark.getDimensions(ctx.getImageData(0,0,canvas.width,canvas.height));
-                if (wmDim && (wmDim.w !== targetObfuscatedImage.width || wmDim.h !== targetObfuscatedImage.height)) {
-                    showToast(`⚠️ Redimensionnement détecté. Restauration canonique (${wmDim.w}x${wmDim.h})...`, "warning");
-                    normalizedCanvas = document.createElement('canvas');
-                    normalizedCanvas.width = wmDim.w; normalizedCanvas.height = wmDim.h;
-                    normalizedCanvas.getContext('2d').drawImage(targetObfuscatedImage, 0, 0, wmDim.w, wmDim.h);
-                }
-            }
-
-            if (meta.pwd && !revPwd.value) {
-                showToast("⚠️ Image protégée. Tentative sans mot de passe (résultat incorrect).", "info");
-            }
-
-            let saltToUse = meta.salt;
-            if (meta.robust) {
-                const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(revPwd.value + "OBSCURE_FIXED_SALT_v1"));
-                saltToUse = Array.from(new Uint8Array(hash).slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
-            }
-            const seed = meta.pwd ? revPwd.value + saltToUse : 'public' + saltToUse;
-            
-            const canvas = normalizedCanvas || document.createElement('canvas');
-            if (!normalizedCanvas) {
-                canvas.width = targetObfuscatedImage.width; canvas.height = targetObfuscatedImage.height;
-                canvas.getContext('2d').drawImage(targetObfuscatedImage, 0, 0);
-            }
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
-            // Extract watermark before revert (try both modes)
-            if (meta.wm) {
-                let wm = null;
-                try {
-                    if (meta.wmMode === 'dct') wm = RobustWatermark.extract(imgData);
-                    else wm = extractWatermark(imgData);
-                } catch(e) { console.warn('WM extract primary fail:', e); }
-                if (!wm) {
-                    try { wm = meta.wmMode === 'dct' ? extractWatermark(imgData) : RobustWatermark.extract(imgData); }
-                    catch(e) { console.warn('WM extract fallback fail:', e); }
-                }
-                if (wm) { 
-                    let displayWm = wm;
-                    if (wm.startsWith('DIM:')) {
-                        const p = wm.split(':');
-                        displayWm = `${p[3] || 'DFWS'} (${p[1]}x${p[2]})`;
-                    }
-                    document.getElementById('revert-watermark-text').textContent = displayWm; 
-                    document.getElementById('revert-watermark-container').classList.remove('hidden'); 
-                }
-                else { document.getElementById('revert-watermark-text').textContent = '(non décodé — image altérée ?)'; document.getElementById('revert-watermark-container').classList.remove('hidden'); }
-            }
-            let sigPayload = meta.sig;
-            const lsbBytes = decodeLSB(imgData);
-            if (lsbBytes) { const t = new TextDecoder().decode(lsbBytes); if (t.startsWith("LSB_SIG:")) sigPayload = JSON.parse(t.substring(8)); }
-            // Skip algo revert for 'none' (stego-only)
-            if (meta.alg !== 'none') {
-                if (meta.dctStego || meta.alg === 'dfws') {
-                    // Has DCT pixel stego: extract secret + reverse algo
-                    try {
-                        const dfwsResult = await workerExtractWithDCT(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed);
-                        imgData.data.set(dfwsResult.pixels);
-                        if (dfwsResult.extractedSecret && !meta.payload) {
-                            const secret = dfwsResult.extractedSecret;
-                            const secretCanvas = document.createElement('canvas');
-                            secretCanvas.width = secret.width; secretCanvas.height = secret.height;
-                            secretCanvas.getContext('2d').putImageData(
-                                new ImageData(new Uint8ClampedArray(secret.data), secret.width, secret.height), 0, 0
-                            );
-                            const displayW = Math.min(512, canvas.width);
-                            const displayH = Math.round(displayW * secret.height / secret.width);
-                            const displayCanvas = document.createElement('canvas');
-                            displayCanvas.width = displayW; displayCanvas.height = displayH;
-                            const dCtx = displayCanvas.getContext('2d');
-                            dCtx.imageSmoothingEnabled = true;
-                            dCtx.drawImage(secretCanvas, 0, 0, displayW, displayH);
-                            const dctBlob = await new Promise(r => displayCanvas.toBlob(r, 'image/png'));
-                            if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
-                            currentHiddenObjectUrl = URL.createObjectURL(dctBlob);
-                            revertHiddenPreview.src = currentHiddenObjectUrl;
-                            revertHiddenContainer.classList.remove('hidden');
-                            const h3El = revertHiddenContainer.querySelector('h3');
-                            if (h3El) h3El.innerHTML = 'Image Originale Extraite (Pixels DCT) 🔍 <small style="font-weight:normal;color:var(--text-muted);">' + secret.width + '×' + secret.height + ' — résistant compression</small>';
-                            showToast('🔍 Image secrète extraite des pixels (' + secret.width + '×' + secret.height + ')', 'info');
+                    const c = document.createElement('canvas');
+                    c.width = demoImg.naturalWidth || 640;
+                    c.height = demoImg.naturalHeight || 480;
+                    const ctx = c.getContext('2d');
+                    ctx.drawImage(demoImg, 0, 0);
+                    c.toBlob((blob) => {
+                        if (blob) {
+                            const demoFile = new File([blob], 'testimg.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+                            activeFiles = [demoFile];
+                            loadSingleImage(demoFile);
+                        } else {
+                            createSyntheticDemoImage();
                         }
-                    } catch(e) {
-                        console.warn('DCT extract failed, fallback:', e);
-                        try { const result = await workerApply(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, true, 1); imgData.data.set(result); }
-                        catch(e2) { applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true); }
-                    }
-                } else {
-                    try { const result = await workerApply(meta.alg, imgData.data.buffer.slice(0), canvas.width, canvas.height, seed, true, 1); imgData.data.set(result); }
-                    catch(e) { applyAlgorithm(imgData, canvas.width, canvas.height, meta.alg, seed, true); }
+                    }, 'image/jpeg');
+                } catch {
+                    createSyntheticDemoImage();
                 }
-            }
-            ctx.putImageData(imgData, 0, 0);
-            const mathBlob = await new Promise(r => canvas.toBlob(r, meta.mime));
-            if (currentMathObjectUrl) URL.revokeObjectURL(currentMathObjectUrl);
-            currentMathObjectUrl = URL.createObjectURL(mathBlob);
-            revertPreview.src = currentMathObjectUrl;
-            revertResult.classList.remove('hidden');
-            if (meta.payload) {
-                try {
-                    let original;
-                    if (meta.payload.enc) {
-                        const decComp = await decryptData(base64ToArrayBuffer(meta.payload.data), meta.pwd ? revPwd.value : null, meta.payload.salt ? base64ToArrayBuffer(meta.payload.salt) : null, meta.payload.iv ? base64ToArrayBuffer(meta.payload.iv) : null);
-                        original = await decompressData(decComp);
-                    } else {
-                        original = await decompressData(base64ToArrayBuffer(meta.payload.data));
-                    }
-                    const blob = new Blob([original], { type: meta.payload.mime });
-                    if (currentHiddenObjectUrl) URL.revokeObjectURL(currentHiddenObjectUrl);
-                    currentHiddenObjectUrl = URL.createObjectURL(blob);
-                    // If it's an image, show preview; otherwise show icon
-                    if (meta.payload.mime && meta.payload.mime.startsWith('image/')) {
-                        revertHiddenPreview.src = currentHiddenObjectUrl;
-                    } else {
-                        const extMap = {'application/pdf':'PDF','application/zip':'ZIP','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'DOCX','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'XLSX','application/vnd.openxmlformats-officedocument.presentationml.presentation':'PPTX','text/plain':'TXT','application/json':'JSON'};
-                        const extLabel = extMap[meta.payload.mime] || meta.payload.mime.split('/')[1]?.toUpperCase() || 'FICHIER';
-                        revertHiddenPreview.src = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120"><rect width="200" height="120" rx="12" fill="%23334155"/><text x="100" y="55" text-anchor="middle" fill="%2394a3b8" font-size="40">\ud83d\udcc4</text><text x="100" y="90" text-anchor="middle" fill="%23e2e8f0" font-size="18">' + extLabel + '</text></svg>');
-                    }
-                    revertHiddenContainer.classList.remove('hidden');
-                } catch(e) { console.warn('Payload extraction failed:', e); }
-            }
-            if (sigPayload) {
-                try {
-                    let text;
-                    if (sigPayload.enc !== false) {
-                        const decComp = await decryptData(base64ToArrayBuffer(sigPayload.data), meta.pwd ? revPwd.value : null, sigPayload.salt ? base64ToArrayBuffer(sigPayload.salt) : null, sigPayload.iv ? base64ToArrayBuffer(sigPayload.iv) : null);
-                        text = new TextDecoder().decode(await decompressData(decComp));
-                    } else {
-                        text = new TextDecoder().decode(await decompressData(base64ToArrayBuffer(sigPayload.data)));
-                    }
-                    revertSigText.innerText = text;
-                    revertSigContainer.classList.remove('hidden');
-                } catch(e) {}
-            }
-            playSound('success');
-        } catch(e) { console.error(e); alert("Erreur: " + e.message); playSound('error'); }
-        revertClone.innerText = "Restaurer"; revertClone.disabled = false;
+            };
+            demoImg.onerror = () => {
+                createSyntheticDemoImage();
+            };
+            demoImg.src = 'testimg.jpg';
+        });
+    }
+
+    function createSyntheticDemoImage() {
+        const c = document.createElement('canvas');
+        c.width = 640;
+        c.height = 480;
+        const ctx = c.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 640, 480);
+        grad.addColorStop(0, '#1e1b4b');
+        grad.addColorStop(0.5, '#4338ca');
+        grad.addColorStop(1, '#06b6d4');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 640, 480);
+
+        for (let i = 0; i < 30; i++) {
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 + (i % 4) * 0.05})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(i * 14, i * 10, 640 - i * 28, 480 - i * 20);
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 32px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('OBSCURIFY PRO — CRYPTO CARD', 320, 220);
+        ctx.font = '16px monospace';
+        ctx.fillStyle = '#a5b4fc';
+        ctx.fillText('640×480 · Visual Cryptography & DCT Steganography', 320, 260);
+
+        c.toBlob((blob) => {
+            const demoFile = new File([blob], 'demo_crypto_card.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+            activeFiles = [demoFile];
+            loadSingleImage(demoFile);
+        }, 'image/jpeg');
+    }
+
+    async function loadSingleImage(file) {
+        currentImageFile = file;
+        const objectUrl = URL.createObjectURL(file);
+        currentImage = new Image();
+        currentImage.onload = () => {
+            imageWidth = currentImage.naturalWidth;
+            imageHeight = currentImage.naturalHeight;
+
+            dropEmptyUI.classList.add('hidden');
+            compareSliderBox.classList.add('hidden');
+            previewViewport.classList.remove('hidden');
+            viewportToolbar.classList.remove('hidden');
+
+            mainPreviewImg.src = objectUrl;
+            resetZoom();
+            buildLiveGallery();
+            updateSecurityScore();
+            updateForensics();
+
+            showToast(`Image chargée : ${file.name} (${imageWidth}×${imageHeight})`, 'success');
+        };
+        currentImage.src = objectUrl;
+    }
+
+    function loadBatchImages(files) {
+        batchCounter.textContent = files.length;
+        batchStrip.innerHTML = '';
+        files.forEach((file, idx) => {
+            const item = document.createElement('div');
+            item.className = 'batch-thumb-item';
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            const badge = document.createElement('span');
+            badge.className = 'batch-num';
+            badge.textContent = idx + 1;
+            item.appendChild(img);
+            item.appendChild(badge);
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                loadSingleImage(file);
+            });
+            batchStrip.appendChild(item);
+        });
+        batchTray.classList.remove('hidden');
+        loadSingleImage(files[0]);
+    }
+
+    btnClearBatch.addEventListener('click', () => {
+        activeFiles = [];
+        batchTray.classList.add('hidden');
+        batchStrip.innerHTML = '';
     });
 
-    // --- BRUTE FORCE SCAN (Multi-Algo) ---
-    document.getElementById('btn-brute-force')?.addEventListener('click', async () => {
-        if (!targetObfuscatedFile) return alert("Sélectionnez l'image.");
-        const btn = document.getElementById('btn-brute-force');
-        btn.innerText = "Scan en cours..."; btn.disabled = true;
-        showToast("🚀 Scan global lancé (21+ algorithmes)...", "info");
-        
+    // ========================================================================
+    // LIVE ALGORITHM GALLERY MINI-PREVIEWS
+    // ========================================================================
+    async function buildLiveGallery() {
+        algoGallery.innerHTML = '';
+        const previewCanvas = document.createElement('canvas');
+        const previewSize = 72;
+        previewCanvas.width = previewSize;
+        previewCanvas.height = previewSize;
+        const pCtx = previewCanvas.getContext('2d');
+        pCtx.drawImage(currentImage, 0, 0, previewSize, previewSize);
+        const baseData = pCtx.getImageData(0, 0, previewSize, previewSize);
+
+        const algosToPreview = [
+            { id: 'xor-shuffle', name: 'XOR Chaos' },
+            { id: 'cat-map', name: 'Chat Arnold' },
+            { id: 'logistic-xor', name: 'Logistique' },
+            { id: 'baker-map', name: 'Baker Map' },
+            { id: 'chirikov', name: 'Chirikov' },
+            { id: 'henon', name: 'Hénon' },
+            { id: 'hilbert', name: 'Hilbert' },
+            { id: 'spiral', name: 'Spirale' },
+            { id: 'zigzag', name: 'Zigzag' },
+            { id: 'dfws', name: 'DFWS' },
+            { id: 'robust-dct-scramble', name: 'Scramble DCT' },
+            { id: 'block-shuffle-16', name: 'Bloc 16×16' },
+            { id: 'quantize-shuffle', name: 'Pixélisé' },
+            { id: 'color-crush', name: 'Color Crush' }
+        ];
+
+        for (const item of algosToPreview) {
+            const card = document.createElement('div');
+            card.className = `gallery-card ${algoSelect.value === item.id ? 'active' : ''}`;
+            card.dataset.algo = item.id;
+
+            const cardCanvas = document.createElement('canvas');
+            cardCanvas.width = previewSize;
+            cardCanvas.height = previewSize;
+            const cCtx = cardCanvas.getContext('2d');
+
+            try {
+                const sampleBuffer = baseData.data.buffer.slice(0);
+                const { result } = await worker.send({
+                    algo: item.id,
+                    data: sampleBuffer,
+                    width: previewSize,
+                    height: previewSize,
+                    seed: 'gallery_preview_sample',
+                    reverse: false
+                }, [sampleBuffer]);
+
+                const outImgData = new ImageData(new Uint8ClampedArray(result), previewSize, previewSize);
+                cCtx.putImageData(outImgData, 0, 0);
+            } catch {
+                cCtx.drawImage(previewCanvas, 0, 0);
+            }
+
+            const label = document.createElement('div');
+            label.className = 'gallery-label';
+            label.textContent = item.name;
+
+            card.appendChild(cardCanvas);
+            card.appendChild(label);
+            card.addEventListener('click', () => {
+                algoSelect.value = item.id;
+                document.querySelectorAll('.gallery-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                updateAlgoTag();
+                updateSecurityScore();
+            });
+
+            algoGallery.appendChild(card);
+        }
+    }
+
+    // ========================================================================
+    // OBFUSCATION & EXPORT WORKFLOW
+    // ========================================================================
+    btnRunObfuscate.addEventListener('click', async () => {
+        const filesToProcess = activeFiles.length > 1 ? activeFiles : (currentImageFile ? [currentImageFile] : []);
+        if (!filesToProcess.length) {
+            showToast('Veuillez d\'abord charger une image.', 'error');
+            return;
+        }
+
+        btnRunObfuscate.disabled = true;
+        btnRunObfuscate.innerHTML = `
+            <svg class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"></path></svg>
+            <span>Calculs Cryptographiques...</span>
+        `;
+
+        try {
+            const pwd = obfPwd.value.trim();
+            const algo = algoSelect.value;
+            const isRobust = robustModeCb.checked;
+            const intensity = parseInt(glitchIntensity.value, 10) / 100;
+            const wmActive = watermarkToggle.checked && watermarkText.value.trim();
+            const wmText = wmActive ? watermarkText.value.trim() : '';
+            const wmMode = document.querySelector('input[name="wm-mode"]:checked')?.value || 'lsb';
+
+            let salt = crypto.randomUUID();
+            if (isRobust && pwd) {
+                salt = await CryptoEngine.getDeterministicSalt(pwd);
+            }
+            const seed = pwd ? pwd + salt : 'public' + salt;
+
+            // Process First Image for Live Viewport & Comparison
+            const primaryFile = filesToProcess[0];
+            const primaryImg = new Image();
+            primaryImg.src = URL.createObjectURL(primaryFile);
+            await new Promise(r => primaryImg.onload = r);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = primaryImg.naturalWidth;
+            canvas.height = primaryImg.naturalHeight;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(primaryImg, 0, 0);
+
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            originalPixels = new Uint8Array(imgData.data);
+            imageWidth = canvas.width;
+            imageHeight = canvas.height;
+
+            // Determine Hidden File / Document Payload
+            let fileToEmbed = selectedSecretFile;
+            if (!fileToEmbed && embedSecretFile.files && embedSecretFile.files.length) {
+                fileToEmbed = embedSecretFile.files[0];
+            }
+
+            let secretFilePayloadForDct = null;
+            let secretThumbPayload = null;
+
+            if (dctPixelCb.checked) {
+                if (fileToEmbed) {
+                    // Embed Document in DCT Coefficients (Compression-Resistant & Format-Conversion Resistant)
+                    const rawBuf = await fileToEmbed.arrayBuffer();
+                    const compBuf = await CryptoEngine.compress(rawBuf);
+                    let finalBuf = compBuf;
+                    if (pwd) {
+                        const dctSalt = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + 'OBSCURIFY_DCT_SALT'))).slice(0, 16);
+                        const dctIv = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + 'OBSCURIFY_DCT_IV'))).slice(0, 12);
+                        const key = await CryptoEngine.deriveKey(pwd, dctSalt);
+                        finalBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: dctIv }, key, compBuf);
+                    }
+                    secretFilePayloadForDct = {
+                        data: finalBuf,
+                        name: fileToEmbed.name,
+                        mime: fileToEmbed.type || 'application/octet-stream',
+                        encrypted: !!pwd
+                    };
+                } else if (embedOriginalCb.checked) {
+                    // Embed Downscaled Original Image in DCT
+                    const secretThumb = downscaleImage(primaryImg, 64);
+                    secretThumbPayload = {
+                        data: secretThumb.data.buffer,
+                        width: secretThumb.width,
+                        height: secretThumb.height
+                    };
+                }
+            }
+
+            // Run Cryptographic Algorithm & DCT Pixel Embedding in a single unified step
+            const bufferToTransfer = imgData.data.buffer.slice(0);
+            const transferList = [bufferToTransfer];
+            if (secretFilePayloadForDct && secretFilePayloadForDct.data instanceof ArrayBuffer) {
+                transferList.push(secretFilePayloadForDct.data);
+            }
+            if (secretThumbPayload && secretThumbPayload.data instanceof ArrayBuffer) {
+                transferList.push(secretThumbPayload.data);
+            }
+
+            const { result } = await worker.send({
+                algo,
+                data: bufferToTransfer,
+                width: canvas.width,
+                height: canvas.height,
+                seed,
+                reverse: false,
+                intensity,
+                secretFile: secretFilePayloadForDct,
+                secretImage: secretThumbPayload
+            }, transferList);
+
+            imgData.data.set(new Uint8Array(result));
+
+            // Watermark embedding (LSB)
+            if (wmActive && wmMode === 'lsb') {
+                try {
+                    StegoEngine.encodeLSB(imgData, new TextEncoder().encode(`WM:${wmText}`));
+                } catch (e) {
+                    console.warn('LSB Watermark warning:', e);
+                }
+            }
+
+            obfuscatedPixels = new Uint8Array(imgData.data);
+            ctx.putImageData(imgData, 0, 0);
+
+            // Container Metadata Assembly
+            const metadata = {
+                v: 4,
+                alg: algo,
+                pwd: !!pwd,
+                salt,
+                robust: isRobust,
+                mime: primaryFile.type || 'image/png',
+                wm: wmActive ? { text: wmText, mode: wmMode } : null
+            };
+
+            // Also embed in metadata trailer for dual redundancy (lossless PNG)
+            const metaFile = fileToEmbed || (embedOriginalCb.checked ? primaryFile : null);
+            if (metaFile) {
+                const rawBuf = await metaFile.arrayBuffer();
+                const compressedBuf = await CryptoEngine.compress(rawBuf);
+                const { encrypted, salt: pSalt, iv: pIv } = await CryptoEngine.encryptData(compressedBuf, pwd);
+                metadata.payload = {
+                    data: CryptoEngine.bufferToBase64(encrypted),
+                    salt: pSalt ? CryptoEngine.bufferToBase64(pSalt) : null,
+                    iv: pIv ? CryptoEngine.bufferToBase64(pIv) : null,
+                    mime: metaFile.type || 'application/octet-stream',
+                    filename: metaFile.name || 'document.bin'
+                };
+            }
+
+            // Export blob with container trailer
+            const exportMime = exportFormatSelect.value;
+            const visualBlob = await new Promise(r => canvas.toBlob(r, exportMime, 0.95));
+            const metaPayload = new TextEncoder().encode(JSON.stringify(metadata) + MAGIC_V4);
+            const finalBlob = new Blob([visualBlob, metaPayload], { type: exportMime });
+
+            // Calculate SHA-256 integrity hash
+            const sha256 = await CryptoEngine.hashBuffer(finalBlob, 'SHA-256');
+            hashValue.textContent = sha256;
+            integrityCard.classList.remove('hidden');
+
+            // Trigger Download
+            const ext = exportMime.split('/')[1] || 'png';
+            const dlLink = document.createElement('a');
+            dlLink.href = URL.createObjectURL(finalBlob);
+            dlLink.download = `obscurify_${Date.now()}.${ext}`;
+            dlLink.click();
+            URL.revokeObjectURL(dlLink.href);
+
+            // Switch Viewport to Interactive Comparison Slider
+            initCompareSlider();
+
+            // Store in Audit History
+            addHistoryRecord({
+                filename: primaryFile.name,
+                algo,
+                date: Date.now(),
+                sha256,
+                thumbUrl: createThumbnailDataUrl(canvas, 64)
+            });
+
+            SoundManager.play('success');
+            showToast('Image obfusquée et sécurisée avec succès !', 'success');
+
+        } catch (err) {
+            console.error(err);
+            SoundManager.play('error');
+            showToast(`Erreur : ${err.message}`, 'error');
+        } finally {
+            btnRunObfuscate.disabled = false;
+            btnRunObfuscate.innerHTML = `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Offusquer & Télécharger</span>
+            `;
+        }
+    });
+
+    function downscaleImage(img, targetWidth) {
+        const c = document.createElement('canvas');
+        const targetHeight = Math.round(targetWidth * (img.naturalHeight / img.naturalWidth));
+        c.width = targetWidth;
+        c.height = targetHeight;
+        const cx = c.getContext('2d');
+        cx.drawImage(img, 0, 0, targetWidth, targetHeight);
+        return cx.getImageData(0, 0, targetWidth, targetHeight);
+    }
+
+    function createThumbnailDataUrl(sourceCanvas, size = 64) {
+        const c = document.createElement('canvas');
+        c.width = size;
+        c.height = size;
+        const cx = c.getContext('2d');
+        cx.drawImage(sourceCanvas, 0, 0, size, size);
+        return c.toDataURL('image/png');
+    }
+
+    // ========================================================================
+    // INTERACTIVE SPLIT COMPARE SLIDER
+    // ========================================================================
+    function initCompareSlider() {
+        if (!originalPixels || !obfuscatedPixels) return;
+
+        previewViewport.classList.add('hidden');
+        compareSliderBox.classList.remove('hidden');
+
+        compareCanvas.width = imageWidth;
+        compareCanvas.height = imageHeight;
+        renderCompareCanvas();
+
+        compareSliderBox.onmousedown = (e) => {
+            isDraggingSlider = true;
+            updateSliderPos(e);
+        };
+        window.addEventListener('mousemove', (e) => {
+            if (isDraggingSlider) updateSliderPos(e);
+        });
+        window.addEventListener('mouseup', () => { isDraggingSlider = false; });
+
+        // Touch support
+        compareSliderBox.ontouchstart = (e) => {
+            isDraggingSlider = true;
+            if (e.touches[0]) updateSliderPos(e.touches[0]);
+        };
+        window.addEventListener('touchmove', (e) => {
+            if (isDraggingSlider && e.touches[0]) updateSliderPos(e.touches[0]);
+        });
+        window.addEventListener('touchend', () => { isDraggingSlider = false; });
+    }
+
+    function updateSliderPos(e) {
+        const rect = compareSliderBox.getBoundingClientRect();
+        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : rect.left);
+        const relX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+        compareSplit = relX / rect.width;
+        compareHandle.style.left = `${compareSplit * 100}%`;
+        renderCompareCanvas();
+    }
+
+    function renderCompareCanvas() {
+        const ctx = compareCanvas.getContext('2d');
+        const splitPixelX = Math.round(imageWidth * compareSplit);
+
+        const combinedData = ctx.createImageData(imageWidth, imageHeight);
+        const cData = combinedData.data;
+
+        for (let y = 0; y < imageHeight; y++) {
+            const rowOffset = y * imageWidth * 4;
+            // Left slice: original
+            for (let x = 0; x < splitPixelX; x++) {
+                const idx = rowOffset + x * 4;
+                cData[idx]     = originalPixels[idx];
+                cData[idx + 1] = originalPixels[idx + 1];
+                cData[idx + 2] = originalPixels[idx + 2];
+                cData[idx + 3] = originalPixels[idx + 3];
+            }
+            // Right slice: obfuscated
+            for (let x = splitPixelX; x < imageWidth; x++) {
+                const idx = rowOffset + x * 4;
+                cData[idx]     = obfuscatedPixels[idx];
+                cData[idx + 1] = obfuscatedPixels[idx + 1];
+                cData[idx + 2] = obfuscatedPixels[idx + 2];
+                cData[idx + 3] = obfuscatedPixels[idx + 3];
+            }
+        }
+        ctx.putImageData(combinedData, 0, 0);
+    }
+
+    // Zoom and Pan Controls
+    document.getElementById('btn-zoom-in')?.addEventListener('click', () => applyZoom(0.2));
+    document.getElementById('btn-zoom-out')?.addEventListener('click', () => applyZoom(-0.2));
+    document.getElementById('btn-zoom-reset')?.addEventListener('click', resetZoom);
+
+    document.getElementById('btn-export-comparison-gif')?.addEventListener('click', async () => {
+        if (!originalPixels || !obfuscatedPixels) {
+            return showToast('Offusquez d\'abord une image pour exporter le comparatif.', 'info');
+        }
+        showToast('Génération de l\'animation comparative...', 'info');
+        try {
+            const animCanvas = document.createElement('canvas');
+            const maxDim = 600;
+            const scale = Math.min(1, maxDim / Math.max(imageWidth, imageHeight));
+            animCanvas.width = Math.round(imageWidth * scale);
+            animCanvas.height = Math.round(imageHeight * scale);
+            const aCtx = animCanvas.getContext('2d');
+
+            const origCanvas = document.createElement('canvas');
+            origCanvas.width = imageWidth; origCanvas.height = imageHeight;
+            origCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(originalPixels), imageWidth, imageHeight), 0, 0);
+
+            const obfCanvas = document.createElement('canvas');
+            obfCanvas.width = imageWidth; obfCanvas.height = imageHeight;
+            obfCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(obfuscatedPixels), imageWidth, imageHeight), 0, 0);
+
+            if (window.MediaRecorder && animCanvas.captureStream) {
+                const stream = animCanvas.captureStream(30);
+                const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+                const chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `obscurify_comparatif_${Date.now()}.webm`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                    showToast('Animation comparative (WebM) téléchargée !', 'success');
+                };
+                recorder.start();
+
+                let step = 0;
+                const totalSteps = 90;
+                const animInterval = setInterval(() => {
+                    step++;
+                    const progress = (step % 45) / 45;
+                    const split = step < 45 ? progress : (1 - progress);
+                    aCtx.clearRect(0, 0, animCanvas.width, animCanvas.height);
+                    aCtx.drawImage(origCanvas, 0, 0, animCanvas.width, animCanvas.height);
+                    aCtx.save();
+                    aCtx.beginPath();
+                    aCtx.rect(animCanvas.width * split, 0, animCanvas.width * (1 - split), animCanvas.height);
+                    aCtx.clip();
+                    aCtx.drawImage(obfCanvas, 0, 0, animCanvas.width, animCanvas.height);
+                    aCtx.restore();
+
+                    // Split line
+                    aCtx.fillStyle = '#ffffff';
+                    aCtx.fillRect(animCanvas.width * split - 1, 0, 2, animCanvas.height);
+
+                    if (step >= totalSteps) {
+                        clearInterval(animInterval);
+                        recorder.stop();
+                    }
+                }, 33);
+            } else {
+                showToast('MediaRecorder non supporté sur ce navigateur.', 'info');
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('Erreur génération vidéo comparative.', 'error');
+        }
+    });
+
+    function applyZoom(delta) {
+        zoomScale = Math.max(0.5, Math.min(5, zoomScale + delta));
+        mainPreviewImg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+    }
+
+    function resetZoom() {
+        zoomScale = 1;
+        panX = 0;
+        panY = 0;
+        mainPreviewImg.style.transform = 'translate(0px, 0px) scale(1)';
+    }
+
+    // Viewport Pan
+    previewViewport.addEventListener('mousedown', (e) => {
+        if (zoomScale <= 1) return;
+        isPanning = true;
+        panStartX = e.clientX - panX;
+        panStartY = e.clientY - panY;
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        panX = e.clientX - panStartX;
+        panY = e.clientY - panStartY;
+        mainPreviewImg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+    });
+    window.addEventListener('mouseup', () => { isPanning = false; });
+    previewViewport.addEventListener('dblclick', resetZoom);
+
+    // ========================================================================
+    // TAB 2: REVERT & RESTORATION WORKFLOW
+    // ========================================================================
+    setupDropZone(revertDropZone, revertFileInput, async (files) => {
+        if (files.length) {
+            targetRevertFile = files[0];
+            const objUrl = URL.createObjectURL(targetRevertFile);
+            targetRevertImage = new Image();
+            targetRevertImage.onload = async () => {
+                revertEmptyUI.classList.add('hidden');
+                revertViewport.classList.remove('hidden');
+                revertPreviewImg.src = objUrl;
+
+                // Inspect image trailer for container tags
+                try {
+                    const buffer = await targetRevertFile.arrayBuffer();
+                    const dec = new TextDecoder();
+                    const tailSlice = dec.decode(buffer.slice(Math.max(0, buffer.byteLength - 15000000)));
+
+                    let magicIdx = tailSlice.lastIndexOf(MAGIC_V4);
+                    let isLegacy = false;
+                    if (magicIdx === -1) {
+                        magicIdx = tailSlice.lastIndexOf(LEGACY_MAGIC);
+                        isLegacy = true;
+                    }
+
+                    if (magicIdx !== -1) {
+                        const searchVer = isLegacy ? '{"v":5' : '{"v":4';
+                        const jStart = tailSlice.substring(0, magicIdx).lastIndexOf(searchVer);
+                        if (jStart !== -1) {
+                            const metaFound = JSON.parse(tailSlice.substring(jStart, magicIdx));
+                            if (revertContainerBadge) {
+                                revertContainerBadge.textContent = '📦 Conteneur Détecté (v4)';
+                                revertContainerBadge.style.background = 'rgba(16,185,129,0.15)';
+                                revertContainerBadge.style.color = 'var(--accent-emerald)';
+                                revertContainerBadge.style.borderColor = 'rgba(16,185,129,0.3)';
+                            }
+                            if (metaFound.alg && revertAlgoSelect) {
+                                revertAlgoSelect.value = metaFound.alg;
+                            }
+                            showToast(`Image reconnue : algorithme ${metaFound.alg.toUpperCase()}`, 'success');
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Trailer inspect warning:', e);
+                }
+
+                // If no metadata trailer was found (JPEG / converted image)
+                if (revertContainerBadge) {
+                    revertContainerBadge.textContent = '🛡️ Mode JPEG / Sans Métadonnées';
+                    revertContainerBadge.style.background = 'rgba(245,158,11,0.15)';
+                    revertContainerBadge.style.color = 'var(--accent-amber)';
+                    revertContainerBadge.style.borderColor = 'rgba(245,158,11,0.3)';
+                }
+                if (revertAlgoSelect && revertAlgoSelect.value === 'auto') {
+                    revertAlgoSelect.value = 'robust-dct-scramble';
+                }
+                showToast('Image JPEG / sans métadonnées : Détection fréquentielle DCT & choix d\'algorithme activé.', 'info');
+            };
+            targetRevertImage.src = objUrl;
+        }
+    });
+
+    btnRunRevert.addEventListener('click', async () => {
+        if (!targetRevertFile) {
+            showToast('Sélectionnez d\'abord l\'image à restaurer.', 'error');
+            return;
+        }
+
+        btnRunRevert.disabled = true;
+        btnRunRevert.textContent = 'Déchiffrement en cours...';
+
+        try {
+            const buffer = await targetRevertFile.arrayBuffer();
+            const dec = new TextDecoder();
+            const tailSlice = dec.decode(buffer.slice(Math.max(0, buffer.byteLength - 15000000)));
+
+            // Find magic trailer (v4 or legacy)
+            let magicIdx = tailSlice.lastIndexOf(MAGIC_V4);
+            let isLegacy = false;
+            if (magicIdx === -1) {
+                magicIdx = tailSlice.lastIndexOf(LEGACY_MAGIC);
+                isLegacy = true;
+            }
+
+            let meta = null;
+            if (magicIdx !== -1) {
+                const searchVersion = isLegacy ? '{"v":5' : '{"v":4';
+                const jsonStart = tailSlice.substring(0, magicIdx).lastIndexOf(searchVersion);
+                if (jsonStart !== -1) {
+                    try {
+                        const jsonStr = tailSlice.substring(jsonStart, magicIdx);
+                        meta = JSON.parse(jsonStr);
+                    } catch {}
+                }
+            }
+
+            // Determine effective algorithm (honor manual selector override)
+            let chosenAlgo = 'robust-dct-scramble';
+            if (revertAlgoSelect && revertAlgoSelect.value !== 'auto') {
+                chosenAlgo = revertAlgoSelect.value;
+            } else if (meta && meta.alg) {
+                chosenAlgo = meta.alg;
+            }
+
+            const pwd = revertPwd.value.trim();
+
+            // Fallback: If metadata was stripped (JPEG or conversion)
+            if (!meta) {
+                meta = {
+                    v: 4,
+                    alg: chosenAlgo,
+                    pwd: !!pwd,
+                    robust: true,
+                    salt: 'public'
+                };
+                showToast('Mode de secours engagé (Survit au JPEG & Recompression).', 'info');
+            } else {
+                meta.alg = chosenAlgo;
+            }
+
+            let saltToUse = meta.salt || 'public';
+            if (meta.robust && pwd) {
+                saltToUse = await CryptoEngine.getDeterministicSalt(pwd);
+            }
+            const seed = meta.pwd ? pwd + saltToUse : 'public' + saltToUse;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = targetRevertImage.naturalWidth || targetRevertImage.width;
+            canvas.height = targetRevertImage.naturalHeight || targetRevertImage.height;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(targetRevertImage, 0, 0);
+
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            // Watermark detection (LSB)
+            const lsbBytes = StegoEngine.decodeLSB(imgData);
+            if (lsbBytes) {
+                const txt = new TextDecoder().decode(lsbBytes);
+                if (txt.startsWith('WM:')) {
+                    detectedWmInfo.textContent = `🔖 Filigrane LSB : "${txt.substring(3)}"`;
+                    revertMetaCard.classList.remove('hidden');
+                }
+            }
+
+            // Mathematical inverse transformation & DCT pixel steganography extraction
+            let extractedSecret = null;
+            if (meta.alg && meta.alg !== 'none') {
+                const bufferToTransfer = imgData.data.buffer.slice(0);
+                const sendRes = await worker.send({
+                    algo: meta.alg,
+                    data: bufferToTransfer,
+                    width: canvas.width,
+                    height: canvas.height,
+                    seed,
+                    reverse: true,
+                    extractSecret: true
+                }, [bufferToTransfer]);
+
+                imgData.data.set(new Uint8Array(sendRes.result));
+                extractedSecret = sendRes.extractedSecret;
+            } else {
+                // Algo 'none' — pure steganography extraction
+                const bufferToTransfer = imgData.data.buffer.slice(0);
+                const sendRes = await worker.send({
+                    algo: 'dct-extract',
+                    data: bufferToTransfer,
+                    width: canvas.width,
+                    height: canvas.height
+                }, [bufferToTransfer]);
+                extractedSecret = sendRes.extractedSecret;
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+
+            // Revert display
+            const mathBlob = await new Promise(r => canvas.toBlob(r, meta.mime || 'image/png'));
+            if (currentRestoredBlobUrl) URL.revokeObjectURL(currentRestoredBlobUrl);
+            currentRestoredBlobUrl = URL.createObjectURL(mathBlob);
+            revertPreviewImg.src = currentRestoredBlobUrl;
+
+            let payloadResolved = false;
+
+            // 1. Process DCT-Extracted Secret (Survives JPEG compression and conversions!)
+            if (extractedSecret) {
+                try {
+                    if (extractedSecret.type === 'file') {
+                        let fileBuffer = extractedSecret.data;
+                        if (extractedSecret.encrypted) {
+                            if (!pwd) {
+                                showToast('Document secret DCT chiffré détecté. Saisissez le mot de passe pour le déchiffrer.', 'info');
+                            } else {
+                                const dctSalt = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + 'OBSCURIFY_DCT_SALT'))).slice(0, 16);
+                                const dctIv = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + 'OBSCURIFY_DCT_IV'))).slice(0, 12);
+                                const key = await CryptoEngine.deriveKey(pwd, dctSalt);
+                                fileBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: dctIv }, key, fileBuffer);
+                            }
+                        }
+                        if (fileBuffer) {
+                            const decompressed = await CryptoEngine.decompress(fileBuffer);
+                            displayExtractedFilePayload({
+                                data: decompressed,
+                                name: extractedSecret.fileName || 'document_secret.bin',
+                                mime: extractedSecret.mimeType || 'application/octet-stream',
+                                source: 'dct'
+                            });
+                            payloadResolved = true;
+                        }
+                    } else if (extractedSecret.type === 'image') {
+                        displayExtractedImageThumbnail(extractedSecret);
+                        payloadResolved = true;
+                    }
+                } catch (e) {
+                    console.warn('DCT secret decryption/decompression error:', e);
+                    showToast('Erreur déchiffrement DCT : mot de passe incorrect ?', 'error');
+                }
+            }
+
+            // 2. Fallback: Process Metadata Container Payload if DCT didn't resolve
+            if (!payloadResolved && meta && meta.payload) {
+                try {
+                    const encBuf = CryptoEngine.base64ToBuffer(meta.payload.data);
+                    const sSalt = meta.payload.salt ? CryptoEngine.base64ToBuffer(meta.payload.salt) : null;
+                    const sIv = meta.payload.iv ? CryptoEngine.base64ToBuffer(meta.payload.iv) : null;
+
+                    const decBuffer = await CryptoEngine.decryptData(encBuf, pwd, sSalt, sIv);
+                    const decompressed = await CryptoEngine.decompress(decBuffer);
+
+                    displayExtractedFilePayload({
+                        data: decompressed,
+                        name: meta.payload.filename || 'document_secret.bin',
+                        mime: meta.payload.mime || 'application/octet-stream',
+                        source: 'metadata'
+                    });
+                    payloadResolved = true;
+                } catch (e) {
+                    console.warn('Metadata trailer payload decryption error:', e);
+                    showToast('Payload conteneur détecté mais mot de passe incorrect.', 'error');
+                }
+            }
+
+            detectedAlgoInfo.textContent = meta.alg ? meta.alg.toUpperCase() : 'INCONNU';
+            detectedSigInfo.textContent = magicIdx !== -1 ? 'Conteneur Intact (v4)' : 'Mode Fréquentiel (Sans Métadonnées)';
+            revertMetaCard.classList.remove('hidden');
+
+            SoundManager.play('success');
+            showToast('Restauration et analyse achevées avec succès !', 'success');
+
+        } catch (err) {
+            console.error(err);
+            SoundManager.play('error');
+            showToast(`Erreur : ${err.message}`, 'error');
+        } finally {
+            btnRunRevert.disabled = false;
+            btnRunRevert.textContent = 'Déchiffrer & Restaurer';
+        }
+    });
+
+    btnDownloadSecret.addEventListener('click', () => {
+        if (!currentSecretPayloadBlob) return;
+        const dlLink = document.createElement('a');
+        dlLink.href = URL.createObjectURL(currentSecretPayloadBlob);
+        dlLink.download = payloadFilenameText.textContent || 'secret_file';
+        dlLink.click();
+        URL.revokeObjectURL(dlLink.href);
+    });
+
+    function displayExtractedFilePayload({ data, name, mime, source }) {
+        const payloadBlob = new Blob([data], { type: mime || 'application/octet-stream' });
+        currentSecretPayloadBlob = payloadBlob;
+
+        payloadFilenameText.textContent = name;
+        payloadMetaText.textContent = `${(payloadBlob.size / 1024).toFixed(1)} KB · ${payloadBlob.type || 'Fichier binaire'}`;
+
+        if (source === 'dct') {
+            payloadSourceTag.textContent = '🛡️ Extrait des fréquences DCT (Survit au JPEG & Recompression)';
+            payloadSourceTag.className = 'payload-source-tag robust';
+        } else {
+            payloadSourceTag.textContent = '📦 Extrait du conteneur de métadonnées (PNG)';
+            payloadSourceTag.className = 'payload-source-tag metadata';
+        }
+
+        const ext = (name.split('.').pop() || 'bin').toUpperCase().slice(0, 4);
+        payloadTypeBadge.textContent = ext;
+
+        if (payloadBlob.type.startsWith('image/')) {
+            payloadThumbPreview.src = URL.createObjectURL(payloadBlob);
+        } else {
+            let emoji = '📄';
+            let bg = '%234f46e5';
+            if (mime.includes('pdf') || ext === 'PDF') { emoji = '📕'; bg = '%23e11d48'; }
+            else if (mime.includes('zip') || mime.includes('compressed') || ext === 'ZIP') { emoji = '🗜️'; bg = '%230891b2'; }
+            else if (mime.includes('text') || ext === 'TXT') { emoji = '📝'; bg = '%23059669'; }
+            else if (mime.includes('word') || ext === 'DOC' || ext === 'DOCX') { emoji = '📘'; bg = '%232563eb'; }
+            else if (mime.includes('audio')) { emoji = '🎵'; bg = '%237c3aed'; }
+            payloadThumbPreview.src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="16" fill="${bg}"/><text x="50" y="62" text-anchor="middle" font-size="42">${emoji}</text></svg>`;
+        }
+
+        extractedPayloadCard.classList.remove('hidden');
+        showToast(`Document secret "${name}" récupéré avec succès !`, 'success');
+    }
+
+    function displayExtractedImageThumbnail(secret) {
+        const secretCanvas = document.createElement('canvas');
+        secretCanvas.width = secret.width;
+        secretCanvas.height = secret.height;
+        secretCanvas.getContext('2d').putImageData(
+            new ImageData(new Uint8ClampedArray(secret.data), secret.width, secret.height),
+            0,
+            0
+        );
+        secretCanvas.toBlob((blob) => {
+            currentSecretPayloadBlob = blob;
+            payloadThumbPreview.src = secretCanvas.toDataURL();
+            payloadFilenameText.textContent = `originale_recuperee_${secret.width}x${secret.height}.png`;
+            payloadMetaText.textContent = `${secret.width}×${secret.height} px · Image miniature originale`;
+            payloadTypeBadge.textContent = 'PNG';
+            payloadSourceTag.textContent = '🛡️ Extrait des coefficients DCT (Survit au JPEG)';
+            payloadSourceTag.className = 'payload-source-tag robust';
+            extractedPayloadCard.classList.remove('hidden');
+            showToast('Image secrète originale extraite des fréquences DCT !', 'success');
+        }, 'image/png');
+    }
+
+    // Brute Force Scan
+    btnBruteForce.addEventListener('click', async () => {
+        if (!targetRevertFile) return showToast('Sélectionnez d\'abord une image.', 'error');
+        btnBruteForce.disabled = true;
+        btnBruteForce.textContent = 'Scan en cours...';
+
         try {
             const zip = new JSZip();
-            const w = targetObfuscatedImage.width, h = targetObfuscatedImage.height;
-            const pwd = revPwd.value;
-            
-            // Derive deterministic salt
-            const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd + "OBSCURE_FIXED_SALT_v1"));
-            const robustSalt = Array.from(new Uint8Array(hash).slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+            const pwd = revertPwd.value.trim();
+            const w = targetRevertImage.naturalWidth || targetRevertImage.width;
+            const h = targetRevertImage.naturalHeight || targetRevertImage.height;
 
-            // Extract watermark in case we can detect the right one
-            const tempCanvas = document.createElement('canvas'); tempCanvas.width = w; tempCanvas.height = h;
-            const tempCtx = tempCanvas.getContext('2d'); tempCtx.drawImage(targetObfuscatedImage, 0, 0);
-            const wm = RobustWatermark.extract(tempCtx.getImageData(0,0,w,h));
-            if (wm) zip.file("watermark_detected.txt", "Watermark extrait : " + wm);
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = w;
+            tempCanvas.height = h;
+            const tCtx = tempCanvas.getContext('2d');
+            tCtx.drawImage(targetRevertImage, 0, 0);
 
-            // Reversible algos from code (index 0 to 16)
-            const reversibleAlgos = ['xor-shuffle','logistic-xor','cat-map','baker-map','affine-map','wave-shift','prime-scatter','rgb-shift','hilbert','spiral','zigzag','chirikov','henon','rubik','block-shuffle-8','block-shuffle-16','dfws'];
-            const reversibleNames = ['XOR','Logistic','Cat Map','Baker','Affine','Wave','Prime','RGB','Hilbert','Spiral','Zigzag','Chirikov','Henon','Rubik','Bloc8x8','Bloc16x16','DFWS'];
+            const algos = ['xor-shuffle', 'cat-map', 'logistic-xor', 'dfws', 'baker-map', 'block-shuffle-16', 'henon'];
+            const robustSalt = await CryptoEngine.getDeterministicSalt(pwd);
 
-            for (let i = 0; i < reversibleAlgos.length; i++) {
-                const algo = reversibleAlgos[i];
-                const name = reversibleNames[i];
-                
-                // Try two modes: Normal (random salt - unlikely to work if meta lost) and Robust (deterministic salt)
-                const trials = [
-                    { seed: 'public' + 'public', label: 'Public_NoPwd' },
-                    { seed: (pwd || 'public') + 'public', label: 'Normal' },
-                    { seed: (pwd || 'public') + robustSalt, label: 'Robust' }
-                ];
+            for (const algo of algos) {
+                const imgData = tCtx.getImageData(0, 0, w, h);
+                const buf = imgData.data.buffer.slice(0);
+                const seed = (pwd || 'public') + robustSalt;
 
-                for (const trial of trials) {
-                    const seed = trial.seed;
-                    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
-                    const ctx = canvas.getContext('2d'); ctx.drawImage(targetObfuscatedImage, 0, 0);
-                    const imgData = ctx.getImageData(0, 0, w, h);
-                    
-                    try {
-                        const result = await workerApply(algo, imgData.data.buffer.slice(0), w, h, seed, true, 1);
-                        imgData.data.set(result);
-                    } catch(e) {
-                        applyAlgorithm(imgData, w, h, algo, seed, true);
-                    }
-                    
-                    ctx.putImageData(imgData, 0, 0);
-                    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-                    zip.file(`${name}_${trial.label}.png`, blob);
-                }
+                const { result } = await worker.send({
+                    algo,
+                    data: buf,
+                    width: w,
+                    height: h,
+                    seed,
+                    reverse: true
+                }, [buf]);
+
+                const outCanvas = document.createElement('canvas');
+                outCanvas.width = w;
+                outCanvas.height = h;
+                outCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(result), w, h), 0, 0);
+
+                const blob = await new Promise(r => outCanvas.toBlob(r, 'image/png'));
+                zip.file(`${algo}_restored.png`, blob);
             }
 
-            const content = await zip.generateAsync({ type: "blob" });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(content);
-            a.download = `obscurify_bruteforce_${Date.now()}.zip`;
-            a.click();
-            showToast("📦 ZIP généré avec tous les essais !", "success");
-            playSound('success');
-        } catch(e) {
-            console.error(e);
-            alert("Erreur brute-force: " + e.message);
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const dl = document.createElement('a');
+            dl.href = URL.createObjectURL(zipBlob);
+            dl.download = `obscurify_scan_${Date.now()}.zip`;
+            dl.click();
+            URL.revokeObjectURL(dl.href);
+
+            SoundManager.play('success');
+            showToast('Scan complet achevé ! Archive ZIP générée.', 'success');
+        } catch (e) {
+            SoundManager.play('error');
+            showToast(`Erreur brute-force : ${e.message}`, 'error');
+        } finally {
+            btnBruteForce.disabled = false;
+            btnBruteForce.textContent = '🚀 Scan Multi-Algorithmes (Brute Force)';
         }
-        btn.innerText = "🚀 Scan Multi-Algorithmes (Brute Force)"; btn.disabled = false;
     });
 
-    // Download buttons need re-binding since we cloned
-    document.getElementById('btn-download-math')?.addEventListener('click', () => { const a = document.createElement('a'); a.href = currentMathObjectUrl; a.download = `restored_${Date.now()}.png`; a.click(); });
-    document.getElementById('btn-download-hidden')?.addEventListener('click', () => {
-        const a = document.createElement('a');
-        a.href = currentHiddenObjectUrl;
-        // Detect extension from blob type
-        const ext = currentHiddenObjectUrl ? 'bin' : 'png';
-        fetch(currentHiddenObjectUrl).then(r => {
-            const mime = r.headers.get('Content-Type') || 'application/octet-stream';
-            const extensions = {'image/png':'png','image/jpeg':'jpg','image/webp':'webp','application/pdf':'pdf','application/zip':'zip','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx','application/vnd.openxmlformats-officedocument.presentationml.presentation':'pptx','text/plain':'txt','application/json':'json'};
-            a.download = `extracted_${Date.now()}.${extensions[mime] || mime.split('/')[1] || 'bin'}`;
-            a.click();
-        }).catch(() => { a.download = `extracted_${Date.now()}.bin`; a.click(); });
+    // ========================================================================
+    // TAB 3: FORENSIC LAB & BIT-PLANE VISUALIZER
+    // ========================================================================
+    bitChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            bitChips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            forensicBit = parseInt(chip.dataset.bit, 10);
+            renderBitPlane();
+        });
     });
 
-    // --- File Preview for Share receiver ---
-    function showFilePreview(blob, filename) {
-        const el = document.getElementById('share-file-preview');
-        if (!el) return;
-        el.innerHTML = '';
-        if (blob.type.startsWith('image/')) {
-            const img = document.createElement('img');
-            img.src = URL.createObjectURL(blob);
-            img.style.cssText = 'max-width:100%;max-height:200px;border-radius:8px;';
-            el.appendChild(img); el.classList.remove('hidden');
-        } else if (blob.type.startsWith('text/')) {
-            blob.text().then(t => { const pre = document.createElement('pre'); pre.style.cssText = 'padding:10px;font-size:0.75rem;color:var(--text-muted);white-space:pre-wrap;'; pre.textContent = t.substring(0, 2000); el.appendChild(pre); el.classList.remove('hidden'); });
+    channelChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            channelChips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            forensicChannel = chip.dataset.channel;
+            renderBitPlane();
+        });
+    });
+
+    async function updateForensics() {
+        if (!currentImage || !currentImage.src) return;
+
+        // Render Bit Plane
+        renderBitPlane();
+
+        // Render EXIF Table
+        if (currentImageFile) {
+            const meta = await EXIFCleaner.inspect(currentImageFile);
+            exifTableBody.innerHTML = '';
+            for (const [key, val] of Object.entries(meta)) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td><strong>${key}</strong></td><td>${val}</td>`;
+                exifTableBody.appendChild(tr);
+            }
+
+            // Cryptographic Hashes
+            CryptoEngine.hashBuffer(currentImageFile, 'SHA-256').then(h => forensicSha256.textContent = h);
+            CryptoEngine.hashBuffer(currentImageFile, 'SHA-512').then(h => forensicSha512.textContent = h);
         }
     }
 
-    // --- Render history on tab switch ---
-    tabs.forEach(t => t.addEventListener('click', () => { if (t.dataset.target === 'history-view') renderHistory(); }));
+    async function renderBitPlane() {
+        if (!currentImage.naturalWidth) return;
+        const w = currentImage.naturalWidth;
+        const h = currentImage.naturalHeight;
 
-    // --- Drag between tabs: drag obfuscated output to share ---
-    document.addEventListener('dragover', e => e.preventDefault());
+        bitPlaneCanvas.width = w;
+        bitPlaneCanvas.height = h;
 
-    // --- Transfer Stats for P2P ---
-    let transferStart = 0, transferBytes = 0, statInterval = null;
-    function startTransferStats() {
-        transferStart = Date.now(); transferBytes = 0;
-        const statsEl = document.getElementById('share-stats');
-        if (statsEl) statsEl.classList.remove('hidden');
-        statInterval = setInterval(() => {
-            const elapsed = (Date.now() - transferStart) / 1000;
-            document.getElementById('stat-elapsed').textContent = Math.round(elapsed) + 's';
-            document.getElementById('stat-speed').textContent = formatSize(transferBytes / Math.max(1, elapsed)) + '/s';
-            document.getElementById('stat-sent').textContent = formatSize(transferBytes);
-        }, 500);
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = w;
+        offCanvas.height = h;
+        const oCtx = offCanvas.getContext('2d');
+        oCtx.drawImage(currentImage, 0, 0);
+
+        const imgData = oCtx.getImageData(0, 0, w, h);
+        const buf = imgData.data.buffer.slice(0);
+
+        try {
+            const { result } = await worker.send({
+                type: 'bit-plane',
+                data: buf,
+                width: w,
+                height: h,
+                channel: forensicChannel,
+                bitIndex: forensicBit
+            }, [buf]);
+
+            const outImg = new ImageData(new Uint8ClampedArray(result), w, h);
+            bitPlaneCanvas.getContext('2d').putImageData(outImg, 0, 0);
+        } catch (e) {
+            console.error('Bit plane visualization error:', e);
+        }
     }
-    function stopTransferStats() { if (statInterval) clearInterval(statInterval); }
 
-    // --- Zoom/Pan on Preview ---
-    (function initZoom() {
-        const viewport = document.getElementById('zoom-viewport');
-        const img = document.getElementById('obfuscate-preview');
-        if (!viewport || !img) return;
-        let scale = 1, panX = 0, panY = 0, isPanning = false, startX, startY;
-        function applyTransform() { img.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
-        viewport.addEventListener('wheel', e => {
-            if (!img.src || img.classList.contains('hidden') || !img.naturalWidth) return;
+    btnStripAndSave.addEventListener('click', async () => {
+        if (!currentImage.naturalWidth) return;
+        const sanitizedBlob = await EXIFCleaner.sanitizeImage(currentImage, 'image/png');
+        const dl = document.createElement('a');
+        dl.href = URL.createObjectURL(sanitizedBlob);
+        dl.download = `anonymized_${Date.now()}.png`;
+        dl.click();
+        URL.revokeObjectURL(dl.href);
+        showToast('Image 100% anonymisée et téléchargée sans métadonnées.', 'success');
+    });
+
+    // ========================================================================
+    // TAB 4: AUDIT HISTORY & SESSIONS
+    // ========================================================================
+    function getHistory() {
+        try {
+            return JSON.parse(localStorage.getItem('obscurify_history') || '[]');
+        } catch {
+            return [];
+        }
+    }
+
+    function addHistoryRecord(record) {
+        const history = getHistory();
+        history.unshift(record);
+        if (history.length > 25) history.pop();
+        localStorage.setItem('obscurify_history', JSON.stringify(history));
+        renderHistory();
+    }
+
+    function renderHistory() {
+        const history = getHistory();
+        historyContainer.innerHTML = '';
+        if (!history.length) {
+            historyEmptyState.classList.remove('hidden');
+            return;
+        }
+        historyEmptyState.classList.add('hidden');
+
+        history.forEach((item, idx) => {
+            const card = document.createElement('div');
+            card.className = 'history-item';
+            const dateStr = new Date(item.date).toLocaleString('fr-FR');
+            card.innerHTML = `
+                <div class="history-left">
+                    <img src="${item.thumbUrl}" class="history-thumb" alt="Thumbnail">
+                    <div class="history-title-group">
+                        <h4>${item.filename}</h4>
+                        <p>${item.algo.toUpperCase()} · ${dateStr}</p>
+                        <code style="font-size:0.68rem;color:var(--text-tertiary);">${item.sha256.substring(0, 24)}...</code>
+                    </div>
+                </div>
+                <div class="history-actions">
+                    <button class="btn-icon" data-copy-hash="${item.sha256}" title="Copier le hash">📋</button>
+                    <button class="btn-icon" data-del-idx="${idx}" title="Supprimer" style="color:var(--accent-rose);">🗑️</button>
+                </div>
+            `;
+
+            card.querySelector('[data-copy-hash]').addEventListener('click', () => {
+                navigator.clipboard.writeText(item.sha256);
+                showToast('Hash copié !', 'success');
+            });
+
+            card.querySelector('[data-del-idx]').addEventListener('click', () => {
+                const hist = getHistory();
+                hist.splice(idx, 1);
+                localStorage.setItem('obscurify_history', JSON.stringify(hist));
+                renderHistory();
+                showToast('Entrée supprimée de l\'historique.', 'info');
+            });
+
+            historyContainer.appendChild(card);
+        });
+    }
+
+    btnExportHistory.addEventListener('click', () => {
+        const history = getHistory();
+        const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+        const dl = document.createElement('a');
+        dl.href = URL.createObjectURL(blob);
+        dl.download = `obscurify_audit_${Date.now()}.json`;
+        dl.click();
+        URL.revokeObjectURL(dl.href);
+    });
+
+    btnClearHistory.addEventListener('click', () => {
+        if (confirm('Voulez-vous purger complètement l\'historique d\'audit ?')) {
+            localStorage.removeItem('obscurify_history');
+            renderHistory();
+            showToast('Historique purgé avec succès.', 'info');
+        }
+    });
+
+    // ========================================================================
+    // KEYBOARD SHORTCUTS
+    // ========================================================================
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            helpModal.classList.remove('active');
+        }
+        if (e.ctrlKey && e.key.toLowerCase() === 'o') {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.15 : 0.15;
-            scale = Math.max(1, Math.min(8, scale + delta));
-            if (scale <= 1) { panX = 0; panY = 0; }
-            applyTransform();
-        }, { passive: false });
-        viewport.addEventListener('mousedown', e => {
-            if (scale <= 1) return;
-            isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY;
-            viewport.style.cursor = 'grabbing';
-        });
-        document.addEventListener('mousemove', e => {
-            if (!isPanning) return;
-            panX = e.clientX - startX; panY = e.clientY - startY;
-            applyTransform();
-        });
-        document.addEventListener('mouseup', () => { isPanning = false; viewport.style.cursor = scale > 1 ? 'grab' : ''; });
-        viewport.addEventListener('dblclick', () => { scale = 1; panX = 0; panY = 0; applyTransform(); });
-        // Reset zoom when new image loaded
-        const observer = new MutationObserver(() => { scale = 1; panX = 0; panY = 0; applyTransform(); });
-        observer.observe(img, { attributes: true, attributeFilter: ['src'] });
-    })();
+            obfFileInput.click();
+        }
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            btnRunObfuscate.click();
+        }
+        if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+            e.preventDefault();
+            if (originalPixels && obfuscatedPixels) {
+                compareSplit = compareSplit > 0.5 ? 0.05 : 0.95;
+                compareHandle.style.left = `${compareSplit * 100}%`;
+                renderCompareCanvas();
+            }
+        }
+    });
 
-    // Init history render
+    // Initialize state
+    updateAlgoTag();
+    updateSecurityScore();
     renderHistory();
-    console.log('✅ Obscurify v3.0 — All features loaded');
+    console.log('🛡️ Obscurify Pro v4.0 initialisé avec succès');
 });

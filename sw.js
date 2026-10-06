@@ -1,10 +1,11 @@
-const CACHE_NAME = 'obscurify-v10';
+const CACHE_NAME = 'obscurify-pro-v4';
 const PRECACHE = [
     './',
     './index.html',
     './styles.css',
     './app.js',
-    './worker.js'
+    './worker.js',
+    './manifest.json'
 ];
 
 self.addEventListener('install', e => {

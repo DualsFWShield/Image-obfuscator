@@ -3,373 +3,710 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Obscurify - Image Obfuscator & File Sharing SaaS</title>
-    <meta name="description" content="Obscurify: Obfuscation d'images par algorithmes mathématiques réversibles, stéganographie et partage serverless.">
+    <title>Obscurify Pro — Suite Cryptographique & Obfuscation d'Images</title>
+    <meta name="description" content="Obscurify Pro: Protection d'images, obfuscation mathématique réversible, stéganographie avancée et suppression de métadonnées. 100% local et sécurisé.">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#6366f1">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- External Lib: JSZip for Batch & Forensic exports -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="background-effects">
-        <div class="glow glow-1"></div>
-        <div class="glow glow-2"></div>
-        <div class="glow glow-3"></div>
+    <!-- Ambient Background Lights -->
+    <div class="background-canvas">
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="ambient-orb orb-3"></div>
     </div>
 
+    <!-- App Top Bar -->
+    <header class="app-header">
+        <div class="brand-wrapper">
+            <div class="brand-logo" aria-hidden="true">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="3" ry="3"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    <circle cx="12" cy="16" r="1.5" fill="currentColor"></circle>
+                </svg>
+            </div>
+            <div class="brand-titles">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <h1>Obscurify</h1>
+                    <span class="brand-badge">Pro v4.0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <div class="action-pill" title="Tous les calculs s'exécutent sur votre processeur sans aucun serveur">
+                <span class="dot"></span>
+                <span>100% Local · Zéro Réseau</span>
+            </div>
+            <button id="audio-toggle" class="btn-icon" title="Effets sonores (Activé)">🔊</button>
+            <button id="theme-toggle" class="btn-icon" title="Changer de thème">🌙</button>
+            <button id="help-toggle" class="btn-icon" title="Raccourcis & Aide">?</button>
+        </div>
+    </header>
+
+    <!-- Master Application Container -->
     <main class="app-container">
-        <header>
-            <div style="display:flex;align-items:center;justify-content:space-between;">
-                <div></div>
-                <h1>Obscurify</h1>
-                <button id="theme-toggle" class="btn-icon" title="Changer le thème">🌙</button>
-            </div>
-            <p>Obfuscation · Stéganographie · Partage Serverless</p>
-        </header>
+        <!-- Navigation Tabs -->
+        <nav class="tabs-navigation" aria-label="Navigation principale">
+            <button class="tab-btn active" data-target="obfuscate-panel">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                <span>Offusquer & Sécuriser</span>
+            </button>
+            <button class="tab-btn" data-target="revert-panel">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                <span>Restaurer & Décoder</span>
+            </button>
+            <button class="tab-btn" data-target="forensic-panel">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m4.93 4.93 4.24 4.24"></path><path d="m14.83 9.17 4.24-4.24"></path><path d="m14.83 14.83 4.24 4.24"></path><path d="m9.17 14.83-4.24 4.24"></path></svg>
+                <span>Laboratoire Forensique</span>
+            </button>
+            <button class="tab-btn" data-target="history-panel">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>
+                <span>Historique & Coffre</span>
+            </button>
+        </nav>
 
-        <div class="tabs">
-            <button class="tab-btn active" data-target="obfuscate-view">🔒 Offusquer</button>
-            <button class="tab-btn" data-target="revert-view">🔓 Restaurer</button>
-            <button class="tab-btn" data-target="share-view">📡 Partager</button>
-            <button class="tab-btn" data-target="history-view">📜 Historique</button>
-        </div>
-
-        <!-- ========== OBFUSCATE VIEW ========== -->
-        <div class="view-content active" id="obfuscate-view">
-            <div class="drop-zone" id="obfuscate-drop">
-                <span class="drop-text">Glissez une ou plusieurs images ici</span>
-                <input type="file" id="obfuscate-file" accept="image/png,image/jpeg,image/webp" hidden multiple>
-                <div id="zoom-viewport" class="zoom-viewport">
-                    <img id="obfuscate-preview" class="preview-img hidden" alt="Aperçu">
-                </div>
-            </div>
-
-            <!-- Batch indicator -->
-            <div id="batch-info" class="hidden panel mt-2" style="padding:10px 16px;">
-                <div style="text-align:center;margin-bottom:8px;"><span id="batch-count"></span> images sélectionnées — <strong>Mode Batch</strong> <small style="opacity:0.6;">(glissez pour réordonner)</small></div>
-                <div id="batch-thumbs" class="batch-thumbs"></div>
-            </div>
-
-            <!-- Comparison Slider -->
-            <div id="compare-container" class="hidden mt-4">
-                <div class="compare-slider" id="compare-slider">
-                    <canvas id="compare-canvas"></canvas>
-                    <div class="compare-handle" id="compare-handle">
-                        <div class="compare-line"></div>
-                        <div class="compare-circle">⟷</div>
+        <!-- ===================================================================
+             TAB 1: OBFUSCATE & ENCRYPT PANEL
+             =================================================================== -->
+        <section class="view-panel active" id="obfuscate-panel">
+            <div class="studio-grid">
+                <!-- Left Controls Column -->
+                <div class="controls-column">
+                    <!-- Quick Presets -->
+                    <div class="panel-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m13 2-2 10h9L7 22l2-10H0z"/></svg>
+                                Profils de Sécurité Rapides
+                            </span>
+                        </div>
+                        <div class="presets-bar">
+                            <button class="preset-chip active" data-preset="max-sec">
+                                <span>🛡️</span>
+                                <div><strong>Confidentialité</strong><br><small style="opacity:0.7">AES-256 + Chaos</small></div>
+                            </button>
+                            <button class="preset-chip" data-preset="anti-social">
+                                <span>📱</span>
+                                <div><strong>Réseaux Sociaux</strong><br><small style="opacity:0.7">Survit à WhatsApp</small></div>
+                            </button>
+                            <button class="preset-chip" data-preset="stealth-stego">
+                                <span>🕵️</span>
+                                <div><strong>Stéganographie</strong><br><small style="opacity:0.7">Image intacte</small></div>
+                            </button>
+                            <button class="preset-chip" data-preset="art-glitch">
+                                <span>🎨</span>
+                                <div><strong>Art Glitch</strong><br><small style="opacity:0.7">Design cyber</small></div>
+                            </button>
+                        </div>
                     </div>
-                    <div class="compare-label compare-label-left">Original</div>
-                    <div class="compare-label compare-label-right">Obfusqué</div>
-                </div>
-            </div>
 
-            <div class="controls panel">
-                <div class="control-group">
-                    <label>Force et Algorithme <button class="help-btn" data-tooltip="Choisissez comment l'image sera transformée.&#10;&#10;• Réversibles : l'image peut être restaurée à 100% avec le bon mot de passe (PNG uniquement).&#10;&#10;• Destructifs : des données sont perdues. Seul le payload stéganographique permet de récupérer l'original.&#10;&#10;📊 Résistance à la compression (JPEG/WhatsApp) :&#10;🟢 Forte = l'effet visuel survit à JPEG Q50+&#10;🟡 Moyenne = effet partiellement dégradé&#10;🔴 Faible = l'effet peut disparaître&#10;&#10;⚠️ La RÉVERSIBILITÉ mathématique est TOUJOURS perdue après compression JPEG. Exportez en PNG pour garantir la restauration.">?</button></label>
-                    <select id="algo-select">
-                        <optgroup label="🔒 Stéganographie Pure (Aucune Obfuscation)">
-                            <option value="none">Aucun (cacher un fichier uniquement)</option>
-                        </optgroup>
-                        <optgroup label="✅ 100% Réversibles (Bijections Sans Perte)">
-                            <option value="xor-shuffle" selected>🟢 Chaos Absolu (XOR & Permutation)</option>
-                            <option value="logistic-xor">🟢 Bruit Non-Linéaire (Logistique & Hénon)</option>
-                            <option value="cat-map">🟢 Torsion Fractale (Chat d'Arnold)</option>
-                            <option value="baker-map">🟢 Pétrissage Infini (Carte de Baker)</option>
-                            <option value="affine-map">🟡 Translation Affine Modulo</option>
-                            <option value="wave-shift">🟡 Ondes Géométriques (Sinusoïdal)</option>
-                            <option value="prime-scatter">🟡 Dispersion Modulaire (Premiers)</option>
-                            <option value="rgb-shift">🔴 Aberration Chromatique (RGB)</option>
-                            <option value="hilbert">🟢 Courbe de Hilbert (Space-Filling)</option>
-                            <option value="spiral">🟢 Scan Spiral (Centre→Bords)</option>
-                            <option value="zigzag">🟢 Zigzag Diagonal (Style JPEG)</option>
-                            <option value="chirikov">🟢 Carte de Chirikov (Standard Map)</option>
-                            <option value="henon">🟢 Attracteur de Hénon (Chaotique)</option>
-                            <option value="rubik">🟢 Rubik's Cube (RGB Planes)</option>
-                        </optgroup>
-                        <optgroup label="⭐ Résistants à la Compression (Réversibles après JPEG/WhatsApp)">
-                            <option value="block-shuffle-8">⭐ Bloc Shuffle 8×8 (aligné JPEG)</option>
-                            <option value="block-shuffle-16">⭐ Bloc Shuffle 16×16 (robuste WhatsApp)</option>
-                            <option value="dfws">🛡️ DualsFWShield (Stégo Pixel — Résiste JPEG/Crop)</option>
-                        </optgroup>
-                        <optgroup label="⚠️ Destructifs (Perte de données irréversible)">
-                            <option value="quantize-shuffle">🟢 ⚠️ Désintégration Pixélisée</option>
-                            <option value="color-crush">🟢 ⚠️ Réduction de Palette Extrême</option>
-                            <option value="blur-noise">🟡 ⚠️ Flou Corruptif & Bruit</option>
-                            <option value="salt-pepper">🟡 ⚠️ Bruit Poivre et Sel</option>
-                        </optgroup>
-                    </select>
-                    <div id="algo-compression-info" class="mt-2" style="font-size:0.75rem;color:var(--text-muted);display:none;"></div>
-                    <div id="algo-warning" class="hidden disclaimer disclaimer-warn mt-2">⚠️ Cet algorithme est <strong>destructif</strong>. Les pixels originaux sont perdus définitivement. Activez "Cacher l'image d'origine" ci-dessous pour pouvoir récupérer l'original.</div>
-                    <div id="algo-none-notice" class="hidden disclaimer mt-2" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:var(--primary);">🔒 <strong>Mode Stéganographie Pure</strong> — L'image ne sera pas altérée visuellement. Utilisez la section ci-dessous pour cacher un fichier (image, PDF, DOCX, ZIP...) à l'intérieur.</div>
-                </div>
-
-                <!-- Effect Gallery -->
-                <div class="control-group">
-                    <label>Aperçu des Effets <small style="opacity:0.6">(cliquez pour choisir)</small> <button class="help-btn" data-tooltip="Miniatures montrant l'effet de chaque algorithme sur votre image. Cliquez sur une miniature pour sélectionner cet algorithme.">?</button></label>
-                    <div id="effect-gallery" class="effect-gallery"></div>
-                </div>
-
-                <!-- Art Glitch Mode -->
-                <div class="control-group">
-                    <label>🎨 Mode Art Glitch — Intensité : <span id="glitch-value">100</span>% <button class="help-btn" data-tooltip="Contrôle le degré de mélange entre l'image originale et l'image obfusquée.&#10;&#10;• 100% = Obfuscation complète (réversible ✅)&#10;• &lt;100% = Effet artistique partiel (NON réversible ⚠️)&#10;&#10;En dessous de 100%, les pixels sont mélangés de façon irréversible. Utilisez ce mode uniquement pour créer des effets visuels artistiques, PAS pour sécuriser une image.">?</button></label>
-                    <input type="range" id="glitch-slider" min="5" max="100" value="100" step="5">
-                    <div class="slider-labels"><span>Subtil (art)</span><span>Total (sécurisé)</span></div>
-                    <div id="glitch-warning" class="hidden disclaimer disclaimer-warn mt-2">⚠️ <strong>Non réversible</strong> en dessous de 100%. L'image ne pourra pas être restaurée mathématiquement. Effet décoratif uniquement.</div>
-                </div>
-
-                <!-- Steganography -->
-                <div class="control-group" style="background:rgba(0,0,0,0.25);padding:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.05);">
-                    <label style="color:var(--primary);">Stéganographie Lourde (Optionnel) <button class="help-btn" data-tooltip="Cache un FICHIER entier à l'intérieur du PNG produit (dans les métadonnées, compressé et chiffré).&#10;&#10;• Supporte : images, PDF, DOCX, XLSX, PPTX, ZIP, etc.&#10;• Taille max recommandée : ~50 Mo.&#10;&#10;Avec algo 'Aucun', l'image reste visuellement identique mais contient secrètement votre fichier.">?</button></label>
-                    <label class="cb-label"><input type="checkbox" id="embed-original" checked> Cacher l'image d'origine</label>
-                    <label class="cb-label" style="margin-top:6px;color:var(--accent);"><input type="checkbox" id="dct-pixel-toggle" checked> 🛡️ Stégo Pixel (résiste JPEG/WhatsApp/Screenshot) <button class="help-btn" data-tooltip="Cache une miniature de l'image originale DIRECTEMENT dans les pixels via DCT.&#10;&#10;• Survit à la compression JPEG, envoi WhatsApp, screenshot&#10;• Image extraite en basse résolution (~64×64 à ~128×128)&#10;• Fonctionne avec TOUS les algorithmes&#10;&#10;L'image en pleine résolution reste dans les métadonnées (PNG uniquement).">?</button></label>
-                    <label class="cb-label" style="margin-top:8px;"><strong>OU</strong> cacher un fichier :<div style="margin-top:6px;"><input type="file" id="embed-other-file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.txt,.csv,.json,.mp3,.mp4,.mov,application/*"></div></label>
-                    <label class="cb-label" style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);padding-top:8px;"><input type="checkbox" id="stego-encrypt" checked> 🔒 Chiffrer le fichier caché <button class="help-btn" data-tooltip="Si coché, le fichier caché sera chiffré avec votre mot de passe (AES-256).&#10;&#10;Si décoché, le fichier est simplement compressé et caché publiquement (accessible sans mot de passe).">?</button></label>
-                </div>
-
-                <!-- Password + Strength -->
-                <div class="control-group inline-group" style="margin-top:20px;">
-                    <label>Mot de passe <button class="help-btn" data-tooltip="Le mot de passe sert de graine pour l'algorithme ET de clé de chiffrement pour les données cachées (AES-256-GCM).&#10;&#10;• Vide = Image publique (n'importe qui avec Obscurify peut restaurer)&#10;• Rempli = Seules les personnes ayant le mot de passe peuvent restaurer&#10;&#10;Le mot de passe n'est JAMAIS stocké dans l'image.">?</button></label>
-                    <input type="password" id="obfuscate-pwd" placeholder="Laisser vide = image publique">
-                    <div id="pwd-strength" class="pwd-strength-bar"><div id="pwd-strength-fill" class="pwd-strength-fill"></div></div>
-                    <div id="pwd-strength-text" class="pwd-strength-text"></div>
-                    <label class="cb-label" style="margin-top:12px;color:var(--accent);"><input type="checkbox" id="robust-mode"> 🧪 Mode Robustesse Maximale <button class="help-btn" data-tooltip="Utilise un 'sel déterministe' basé sur votre mot de passe au lieu d'un sel aléatoire.&#10;&#10;• AVANTAGE : Permet de restaurer l'image même si elle est recadrée (crop) ou compressée (JPEG/WhatsApp), car le sel n'a pas besoin d'être lu dans les métadonnées du fichier.&#10;&#10;• RECOMMANDÉ pour les partages sur réseaux sociaux.">?</button></label>
-                </div>
-
-                <!-- Invisible Watermark -->
-                <div class="control-group">
-                    <label class="cb-label"><input type="checkbox" id="watermark-toggle"> 🔖 Watermark Invisible <button class="help-btn" data-tooltip="Inscrit un texte invisible dans l'image.&#10;&#10;• LSB (léger) : Rapide, dans les bits de poids faible. Fragile à la compression JPEG et aux captures d'écran.&#10;&#10;• DCT Robuste : Encoding dans le domaine fréquentiel (type SynthID). Résiste au JPEG Q70+, screenshots, crop 50%. Modifie légèrement les couleurs (imperceptible).">?</button></label>
-                    <div id="watermark-input" class="hidden" style="margin-top:10px;">
-                        <div class="wm-mode-selector" style="display:flex;gap:6px;margin-bottom:10px;">
-                            <label class="wm-radio" style="flex:1;">
-                                <input type="radio" name="wm-mode" value="lsb" checked>
-                                <div class="wm-radio-card">
-                                    <strong>LSB</strong><br><span style="font-size:0.7rem;color:var(--text-muted);">Léger · Fragile · 32 car.</span>
-                                </div>
+                    <!-- Core Algorithm Selector -->
+                    <div class="panel-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+                                Moteur Mathématique
+                            </span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="algo-select">
+                                <span>Algorithme de transformation</span>
+                                <span id="algo-type-tag" class="brand-badge" style="font-size:0.68rem;">100% Réversible</span>
                             </label>
-                            <label class="wm-radio" style="flex:1;">
-                                <input type="radio" name="wm-mode" value="dct">
-                                <div class="wm-radio-card">
-                                    <strong>DCT Robuste</strong><br><span style="font-size:0.7rem;color:var(--text-muted);">SynthID · JPEG/Crop · 16 car.</span>
+                            <select id="algo-select" class="form-select">
+                                <optgroup label="✅ 100% Réversibles (Bijections Sans Perte)">
+                                    <option value="xor-shuffle" selected>🟢 Chaos Absolu (XOR & Permutation Pseudo-aléatoire)</option>
+                                    <option value="cat-map">🟢 Torsion Fractale (Chat d'Arnold Modulo)</option>
+                                    <option value="logistic-xor">🟢 Bruit Non-Linéaire (Attracteur Logistique)</option>
+                                    <option value="baker-map">🟢 Pétrissage Infini (Carte de Baker)</option>
+                                    <option value="henon">🟢 Attracteur Chaotique de Hénon</option>
+                                    <option value="chirikov">🟢 Carte Standard de Chirikov (Physique)</option>
+                                    <option value="hilbert">🟢 Courbe de Hilbert (Space-Filling Curve)</option>
+                                    <option value="rubik">🟢 Torsion de Rubik's Cube (Plans RGB)</option>
+                                    <option value="spiral">🟢 Scan Spiral Centre-Extérieur</option>
+                                    <option value="zigzag">🟢 Balayage Zigzag Diagonal</option>
+                                    <option value="affine-map">🟡 Translation Affine Modulo</option>
+                                    <option value="wave-shift">🟡 Ondes Sinusoïdales Déphasées</option>
+                                    <option value="prime-scatter">🟡 Dispersion de Nombres Premiers Copremiers</option>
+                                    <option value="rgb-shift">🔴 Décalage d'Aberration Chromatique</option>
+                                </optgroup>
+                                <optgroup label="🛡️ Résistants à la Compression (Survit JPEG/WhatsApp/Crop)">
+                                    <option value="dfws">🛡️ DualsFWShield (Blocs Ancrés & Fréquence DCT)</option>
+                                    <option value="block-shuffle-16">🛡️ Permutation Macroblocs 16×16 (Optimisé WhatsApp & JPEG 4:2:0)</option>
+                                    <option value="robust-dct-scramble">🛡️ Scramble Fréquentiel DCT (Luminance & Blocs 16×16)</option>
+                                    <option value="block-shuffle-8">🛡️ Permutation Blocs 8×8 (Aligné Grille DCT JPEG)</option>
+                                </optgroup>
+                                <optgroup label="🔒 Stéganographie Neutre (Visuel Inchangé)">
+                                    <option value="none">🔒 Aucun (Cacher des documents dans une image intacte)</option>
+                                </optgroup>
+                                <optgroup label="⚠️ Destructifs Artistiques (Non Réversibles)">
+                                    <option value="quantize-shuffle">⚠️ Désintégration Pixélisée</option>
+                                    <option value="color-crush">⚠️ Réduction de Palette Extrême</option>
+                                    <option value="blur-noise">⚠️ Flou Corruptif & Bruit Chaotique</option>
+                                    <option value="salt-pepper">⚠️ Bruit Impulsionnel Poivre & Sel</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <!-- Live Mini Gallery -->
+                        <div class="form-group mt-3">
+                            <label class="form-label">
+                                <span>Aperçu en direct des algorithmes</span>
+                                <small style="color:var(--text-tertiary)">Cliquez pour choisir</small>
+                            </label>
+                            <div id="algo-gallery" class="gallery-grid">
+                                <!-- Populated dynamically by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cryptographic Credentials & Key Derivation -->
+                    <div class="panel-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                                Clé de Sécurité & Chiffrement
+                            </span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="obf-pwd">
+                                <span>Mot de passe / Clé secrète</span>
+                                <span id="pwd-badge" class="brand-badge" style="display:none;"></span>
+                            </label>
+                            <div class="password-field">
+                                <input type="password" id="obf-pwd" class="form-input" placeholder="Laisser vide = image publique Obscurify" autocomplete="off">
+                                <button type="button" id="toggle-pwd-visibility" class="pwd-toggle-btn" title="Afficher/Masquer">👁️</button>
+                            </div>
+                            <!-- Strength Meter -->
+                            <div id="pwd-strength-container" class="pwd-strength-container">
+                                <div class="pwd-strength-bars">
+                                    <div class="pwd-bar-segment" id="pwd-seg-1"></div>
+                                    <div class="pwd-bar-segment" id="pwd-seg-2"></div>
+                                    <div class="pwd-bar-segment" id="pwd-seg-3"></div>
+                                    <div class="pwd-bar-segment" id="pwd-seg-4"></div>
                                 </div>
+                                <div class="pwd-info-row">
+                                    <span id="pwd-entropy-text">Entropie : 0 bits</span>
+                                    <span id="pwd-crack-time">Estimation : instantané</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group mt-2">
+                            <label class="switch-label">
+                                <span>🧪 Mode Robustesse Déterministe (survit au crop & recompression)</span>
+                                <input type="checkbox" id="robust-mode" hidden>
+                                <span class="switch-control"><span class="switch-thumb"></span></span>
                             </label>
                         </div>
-                        <input type="text" id="watermark-text" class="share-input" placeholder="Texte du watermark">
-                        <div id="wm-dct-notice" class="hidden disclaimer disclaimer-info mt-2" style="font-size:0.72rem;">🛡️ Mode DCT : Résiste à la compression JPEG, captures d'écran et crop jusqu'à 50%. Limité à 16 caractères.</div>
                     </div>
-                </div>
 
-                <!-- Signature -->
-                <div class="control-group inline-group" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);padding:16px;border-radius:12px;">
-                    <label style="color:var(--accent);">Signature Invisible <button class="help-btn" data-tooltip="Cache un texte court (signature, copyright, message secret) dans l'image.&#10;&#10;• Métadonnées EOF : Ajouté après les données PNG. Rapide, ne touche pas les pixels. Détectable si on inspecte le fichier en hexadécimal.&#10;&#10;• Pixels (LSB) : Caché dans les bits de poids faible des pixels. Ultra-discret, invisible à l'œil nu et indétectable sans Obscurify. Limité en taille.">?</button></label>
-                    <input type="text" id="obfuscate-sig" placeholder="Texte à cacher" style="margin-bottom:12px;">
-                    <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;text-transform:none;letter-spacing:normal;">Emplacement :</label>
-                    <select id="sig-location"><option value="meta">Métadonnées EOF (rapide, hors pixels)</option><option value="lsb">Pixels LSB (ultra-discret)</option></select>
-                </div>
+                    <!-- Advanced Security Accordion -->
+                    <div class="accordion-group" id="adv-accordion">
+                        <button type="button" class="accordion-trigger" id="adv-trigger">
+                            <span>⚙️ Options de Confidentialité & Stéganographie</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="accordion-content">
+                            <!-- EXIF Stripper -->
+                            <div class="form-group">
+                                <label class="switch-label">
+                                    <span>🏷️ Nettoyer les métadonnées EXIF (GPS, date, appareil)</span>
+                                    <input type="checkbox" id="strip-exif" checked hidden>
+                                    <span class="switch-control"><span class="switch-thumb"></span></span>
+                                </label>
+                            </div>
 
-                <!-- Security Score -->
-                <div class="security-score-container mt-4">
-                    <label style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);margin-bottom:8px;display:block;">Score de Sécurité <button class="help-btn" data-tooltip="Estimation du niveau de protection de votre configuration.&#10;&#10;Augmente avec : algo réversible, mot de passe fort, payload caché, signature, watermark, intensité 100%.&#10;&#10;Ce score est indicatif et ne constitue pas une garantie de sécurité cryptographique.">?</button></label>
-                    <div class="security-gauge">
-                        <svg viewBox="0 0 120 60" class="gauge-svg">
-                            <path d="M10 55 A50 50 0 0 1 110 55" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8" stroke-linecap="round"/>
-                            <path id="gauge-arc" d="M10 55 A50 50 0 0 1 110 55" fill="none" stroke="var(--primary)" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 157"/>
-                        </svg>
-                        <div class="gauge-value" id="gauge-value">0</div>
-                        <div class="gauge-label" id="gauge-label">—</div>
-                    </div>
-                </div>
+                            <!-- Steganography -->
+                            <div class="form-group mt-3">
+                                <label class="switch-label">
+                                    <span>📦 Cacher une copie originale dans le fichier</span>
+                                    <input type="checkbox" id="embed-original-cb" checked hidden>
+                                    <span class="switch-control"><span class="switch-thumb"></span></span>
+                                </label>
+                            </div>
 
-                <div style="display:flex;gap:8px;margin-top:20px;align-items:stretch;">
-                    <button class="btn btn-primary" style="flex:1;" id="btn-obfuscate">Offusquer & Télécharger</button>
-                    <select id="export-format" style="width:90px;border-radius:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--text);padding:0 10px;font-size:0.78rem;cursor:pointer;" title="Format d'export">
-                        <option value="image/png">PNG</option>
-                        <option value="image/webp">WEBP</option>
-                        <option value="image/avif">AVIF</option>
-                        <option value="image/jpeg">JPEG</option>
-                    </select>
-                    <button class="btn btn-secondary" id="btn-export-gif" title="Exporter GIF animé" style="padding:14px 16px;">GIF</button>
-                </div>
+                            <!-- DCT Pixel Stego -->
+                            <div class="form-group">
+                                <label class="switch-label">
+                                    <span>🛡️ Stéganographie DCT dans les pixels (résiste JPEG/WhatsApp)</span>
+                                    <input type="checkbox" id="dct-pixel-cb" checked hidden>
+                                    <span class="switch-control"><span class="switch-thumb"></span></span>
+                                </label>
+                            </div>
 
-                <!-- Integrity Hash -->
-                <div id="integrity-hash" class="hidden mt-2" style="font-size:0.75rem;color:var(--text-muted);word-break:break-all;background:rgba(0,0,0,0.3);padding:10px;border-radius:8px;">
-                    <strong>SHA-256 <button class="help-btn" data-tooltip="Empreinte cryptographique unique du fichier produit. Si un seul bit change, le hash sera complètement différent.&#10;&#10;Partagez ce hash avec le destinataire pour qu'il puisse vérifier que le fichier n'a pas été altéré en transit.">?</button> :</strong> <code id="hash-value"></code>
-                </div>
+                            <!-- Embed External File -->
+                            <div class="form-group mt-2">
+                                <label class="form-label">
+                                    <span>Injecter un document secret (PDF, ZIP, DOCX, TXT)</span>
+                                    <span class="brand-badge badge-robust" style="font-size:0.65rem;">🛡️ Survit au JPEG</span>
+                                </label>
+                                <div class="secret-file-dropzone" id="secret-file-dropzone">
+                                    <input type="file" id="embed-secret-file" hidden>
+                                    <div class="secret-file-prompt" id="secret-file-prompt">
+                                        <span class="secret-file-icon">📁</span>
+                                        <div class="secret-file-text">
+                                            <strong id="secret-file-name-label">Cliquez pour choisir un document secret</strong>
+                                            <small id="secret-file-size-label">Modulation DCT : survit au réencodage JPG et conversion</small>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn-clear-secret hidden" id="btn-clear-secret" title="Retirer le document">✕</button>
+                                </div>
+                            </div>
 
-                <!-- Batch Progress -->
-                <div id="batch-progress" class="hidden mt-4">
-                    <div class="share-progress-bar"><div class="share-progress-fill" id="batch-progress-fill"></div></div>
-                    <p id="batch-progress-text" style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;"></p>
-                </div>
-            </div>
-        </div>
+                            <!-- Invisible Watermark -->
+                            <div class="form-group mt-3">
+                                <label class="switch-label">
+                                    <span>🔖 Filigrane / Watermark Invisible</span>
+                                    <input type="checkbox" id="watermark-toggle" hidden>
+                                    <span class="switch-control"><span class="switch-thumb"></span></span>
+                                </label>
+                                <div id="watermark-box" class="hidden mt-2">
+                                    <input type="text" id="watermark-text" class="form-input" placeholder="Signature invisible (max 32 car.)" maxlength="32">
+                                    <div class="radio-pill-group mt-2">
+                                        <label class="radio-pill">
+                                            <input type="radio" name="wm-mode" value="lsb" checked>
+                                            <span>LSB (Discret / PNG)</span>
+                                        </label>
+                                        <label class="radio-pill">
+                                            <input type="radio" name="wm-mode" value="dct">
+                                            <span>🛡️ DCT SynthID (Robuste JPEG)</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
 
-        <!-- ========== REVERT VIEW ========== -->
-        <div class="view-content" id="revert-view">
-            <div class="drop-zone" id="revert-drop">
-                <span class="drop-text">Glissez une image offusquée par Obscurify</span>
-                <input type="file" id="revert-file" accept="image/png,image/webp,image/jpeg,image/avif" hidden>
-            </div>
-            <div class="controls panel">
-                <div class="control-group inline-group">
-                    <label>Mot de passe</label>
-                    <input type="password" id="revert-pwd" placeholder="Optionnel (tentative sans MDP possible)">
-                </div>
-                <button class="btn btn-primary w-full mt-2" id="btn-revert">Restaurer</button>
-                <button class="btn btn-secondary w-full mt-2" id="btn-brute-force" style="background:rgba(139,92,246,0.1);border-color:rgba(139,92,246,0.3);color:#a78bfa;">🚀 Scan Multi-Algorithmes (Brute Force)</button>
-            </div>
-            <div id="revert-result" class="hidden panel mt-4" style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);">
-                <h3 style="margin-bottom:12px;color:var(--accent);">Restauration Mathématique 🧪</h3>
-                <img id="revert-preview" class="preview-img mt-2">
-                <button class="btn btn-secondary w-full mt-4" id="btn-download-math">Télécharger</button>
-            </div>
-            <div id="revert-hidden-container" class="hidden panel mt-4" style="background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.2);">
-                <h3 style="margin-bottom:12px;color:var(--primary);">Fichier Secret Extrait 🕵️</h3>
-                <img id="revert-hidden-preview" class="preview-img mt-2">
-                <button class="btn btn-primary w-full mt-4" id="btn-download-hidden">Télécharger</button>
-            </div>
-            <div id="revert-sig-container" class="hidden panel mt-4" style="background:rgba(0,0,0,0.3);">
-                <label style="display:block;font-size:0.85rem;color:var(--text-muted);margin-bottom:6px;">Signature Décodée :</label>
-                <code id="revert-sig-text" class="sig-box"></code>
-            </div>
-            <div id="revert-watermark-container" class="hidden panel mt-4" style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.2);">
-                <label style="display:block;font-size:0.85rem;color:var(--text-muted);margin-bottom:6px;">🔖 Watermark Détecté :</label>
-                <code id="revert-watermark-text" class="sig-box" style="color:var(--primary);"></code>
-            </div>
-        </div>
-
-        <!-- ========== SHARE VIEW ========== -->
-        <div class="view-content" id="share-view">
-            <section id="share-sender" class="share-section active">
-                <div class="drop-zone" id="share-drop-zone">
-                    <div class="icon-wrapper"><svg width="48" height="48" viewBox="0 0 24 24" fill="none"><path d="M7 10V9C7 6.24 9.24 4 12 4s5 2.24 5 5v1c2.21 0 4 1.79 4 4 0 1.48-.8 2.81-2 3.5M7 10c-2.21 0-4 1.79-4 4 0 1.48.8 2.81 2 3.5M7 10c.33 0 .65.04.96.12M12 12v8m0-8l-3 3m3-3l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-                    <h3 style="margin-bottom:4px;">Déposez vos fichiers ici</h3>
-                    <p style="color:var(--text-muted);font-size:0.85rem;">ou cliquez pour parcourir</p>
-                    <input type="file" id="share-file-input" multiple hidden>
-                </div>
-                <div style="margin-top:12px;display:none;gap:8px;justify-content:center;">
-                    <button id="open-audio-btn" class="btn btn-secondary" style="width:auto;padding:8px 16px;font-size:0.85rem;">📡 Audio Receiver</button>
-                </div>
-                <div class="hidden" id="share-options-panel">
-                    <div class="share-file-info panel mt-4" style="display:flex;justify-content:space-between;padding:12px 16px;">
-                        <span id="share-filename" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">file.png</span>
-                        <span id="share-filesize" style="color:var(--text-muted);">0 KB</span>
-                    </div>
-                    <div class="panel mt-4">
-                        <div class="share-toggle-row"><label class="toggle-switch"><input type="checkbox" id="share-lossy-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>Compression Lossy (Images)</span></label></div>
-                        <div class="share-toggle-row"><label class="toggle-switch"><input type="checkbox" id="share-encrypt-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>Chiffrer avec mot de passe</span></label></div>
-                        <div id="share-pwd-container" class="hidden" style="margin-bottom:16px;"><input type="password" id="share-sender-pwd" class="share-input" placeholder="Mot de passe"></div>
-                        <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;margin-top:8px;display:none;">
-                            <label class="toggle-switch"><input type="checkbox" id="share-beam-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>📡 Infinity Beam (P2P)</span></label>
-                            <div id="share-beam-info" class="hidden" style="background:rgba(0,242,255,0.08);padding:10px;border-radius:8px;font-size:0.8rem;color:#ccffff;margin-bottom:12px;"><strong>⚡ Transfert Device-to-Device</strong><br>Taille illimitée. <span style="color:#ff9999;">⚠️ Ne fermez pas cet onglet!</span></div>
+                            <!-- Art Glitch Slider -->
+                            <div class="form-group mt-3">
+                                <label class="form-label" for="glitch-intensity">
+                                    <span>🎨 Intensité d'obfuscation : <strong id="glitch-val-text">100%</strong></span>
+                                </label>
+                                <input type="range" id="glitch-intensity" class="slider-control" min="10" max="100" value="100" step="5">
+                                <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-tertiary);margin-top:4px;">
+                                    <span>Glitch Partiel (Art)</span>
+                                    <span>100% Total (Réversible)</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="advanced-toggle" id="share-advanced-toggle" style="display:none;"><span>Options Avancées</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
-                        <div id="share-advanced-panel" class="hidden" style="background:rgba(0,0,0,0.2);padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);margin-bottom:14px;">
-                            <div class="setting-row"><label>💣 Time Bomb</label><select id="share-timebomb"><option value="0">Désactivé</option><option value="5">5 min</option><option value="60">1h</option><option value="1440">24h</option></select></div>
-                            <div class="setting-row"><label>🎨 Vibe Share</label><select id="share-vibe"><option value="default">Défaut</option><option value="cyberpunk">Cyberpunk</option><option value="sunset">Sunset</option><option value="matrix">Matrix</option><option value="zen">Zen</option></select></div>
-                            <div class="setting-row"><label class="toggle-switch" style="margin-bottom:0;"><input type="checkbox" id="share-geo-toggle"><span class="slider-track"><span class="slider-thumb"></span></span><span>📍 Geo-Lock</span></label></div>
-                            <div class="setting-row" style="margin-top:12px;display:none;"><button id="share-audio-tx-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🎼 Audio Key (Tx)</button></div>
-                            <div class="setting-row" style="margin-top:8px;display:none;"><button id="share-camo-btn" class="btn btn-secondary w-full" style="font-size:0.85rem;padding:10px;">🥸 Camouflage</button></div>
+                    </div>
+
+                    <!-- Security Score Gauge -->
+                    <div class="security-gauge-box">
+                        <div class="gauge-svg-wrap">
+                            <svg viewBox="0 0 100 100">
+                                <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
+                                <circle id="gauge-circle" cx="50" cy="50" r="42" fill="none" stroke="var(--primary)" stroke-width="10"
+                                    stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="round" style="transition:stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.4s;"/>
+                            </svg>
+                            <span class="gauge-center-text" id="gauge-percent">0%</span>
                         </div>
-                        <button id="share-generate-btn" class="btn btn-primary w-full">Générer le Lien</button>
-                    </div>
-                    <div id="share-result-panel" class="hidden panel mt-4">
-                        <div style="display:flex;gap:6px;margin-bottom:8px;">
-                            <input type="text" id="share-url" readonly class="share-input" style="flex:1;font-family:monospace;font-size:0.8rem;">
-                            <button id="share-copy-btn" class="btn btn-secondary" style="padding:10px;">📋</button>
-                            <button id="share-qr-btn" class="btn btn-secondary" style="padding:10px;">📱</button>
-                            <a id="share-preview-link" href="#" target="_blank" class="btn btn-secondary" style="padding:10px;text-decoration:none;">🔗</a>
+                        <div class="gauge-meta">
+                            <h4 id="gauge-status-title">Niveau de Protection</h4>
+                            <p id="gauge-status-desc">Chargez une image et configurez un mot de passe pour maximiser la sécurité.</p>
                         </div>
-                        <div id="share-qr-container" class="hidden" style="display:flex;justify-content:center;padding:12px;background:white;border-radius:10px;margin-top:10px;"><div id="share-qrcode"></div></div>
-                        <p class="share-status-msg" id="share-status-msg">Lien généré !</p>
                     </div>
-                    <!-- Transfer Stats -->
-                    <div id="share-stats" class="hidden panel mt-2" style="font-size:0.8rem;color:var(--text-muted);display:flex;gap:16px;justify-content:center;padding:10px;">
-                        <span>⏱ <span id="stat-elapsed">0s</span></span>
-                        <span>🚀 <span id="stat-speed">0 KB/s</span></span>
-                        <span>📦 <span id="stat-sent">0 B</span></span>
+
+                    <!-- Process & Download Actions -->
+                    <div style="display:flex;gap:10px;align-items:stretch;margin-top:6px;">
+                        <button type="button" class="btn-primary" id="btn-run-obfuscate">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            <span>Offusquer & Télécharger</span>
+                        </button>
+                        <select id="export-format" class="form-select" style="width:110px;padding:0 12px;font-size:0.82rem;" title="Format de sortie">
+                            <option value="image/png" selected>PNG (Sans perte)</option>
+                            <option value="image/webp">WEBP</option>
+                            <option value="image/jpeg">JPEG</option>
+                        </select>
                     </div>
-                    <div id="share-progress-container" class="hidden" style="margin-top:16px;">
-                        <div class="share-progress-bar"><div class="share-progress-fill" id="share-progress-fill"></div></div>
-                        <p id="share-progress-text" style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">Traitement...</p>
+
+                    <!-- SHA-256 Hash Display -->
+                    <div id="integrity-card" class="hash-card hidden">
+                        <div class="hash-label-group">
+                            <div class="hash-type">Empreinte SHA-256</div>
+                            <code class="hash-string" id="hash-value">—</code>
+                        </div>
+                        <button type="button" class="btn-icon" id="btn-copy-hash" title="Copier l'empreinte">📋</button>
                     </div>
                 </div>
-            </section>
-            <!-- Receiver -->
-            <section id="share-receiver" class="share-section">
-                <div class="panel" style="text-align:center;padding:30px;">
-                    <div class="icon-wrapper" style="margin-bottom:16px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
-                    <h2 style="margin-bottom:8px;">Fichier Reçu</h2>
-                    <p id="share-recv-filename" style="font-weight:600;margin-bottom:4px;">Chargement...</p>
-                    <p id="share-recv-filesize" style="color:var(--text-muted);font-size:0.85rem;">...</p>
-                    <!-- File Preview -->
-                    <div id="share-file-preview" class="hidden mt-4" style="max-height:200px;overflow:auto;border-radius:10px;border:1px solid rgba(255,255,255,0.1);"></div>
-                    <div id="share-decrypt-panel" class="hidden" style="margin-top:16px;"><input type="password" id="share-decrypt-pwd" class="share-input" placeholder="Mot de passe"><button id="share-decrypt-btn" class="btn btn-primary w-full mt-2">Déverrouiller</button></div>
-                    <button id="share-download-btn" class="btn btn-primary w-full mt-4" disabled>Télécharger</button>
-                    <!-- Mini Chat -->
-                    <div id="share-chat" class="hidden mt-4" style="text-align:left;">
-                        <div id="chat-messages" style="background:rgba(0,0,0,0.3);border-radius:10px;padding:10px;height:120px;overflow-y:auto;font-size:0.8rem;margin-bottom:8px;"></div>
-                        <div style="display:flex;gap:6px;"><input type="text" id="chat-input" class="share-input" placeholder="Message..." style="flex:1;padding:8px 12px;"><button id="chat-send" class="btn btn-primary" style="padding:8px 16px;">↑</button></div>
+
+                <!-- Right Workspace & Interactive Viewport Column -->
+                <div class="workspace-column">
+                    <!-- Drop Zone -->
+                    <div class="drop-zone" id="obf-dropzone">
+                        <input type="file" id="obf-file-input" accept="image/png,image/jpeg,image/webp,image/avif" multiple hidden>
+                        
+                        <!-- Empty Placeholder Prompt -->
+                        <div class="drop-empty-prompt" id="drop-empty-ui">
+                            <div class="drop-icon-circle">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            </div>
+                            <h3>Glissez une ou plusieurs images ici</h3>
+                            <p>Supporte PNG, JPEG, WEBP et AVIF. Traitement ultra-rapide par Web Worker multi-threadé.</p>
+                            <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;justify-content:center;">
+                                <button type="button" class="btn-secondary" id="btn-browse-files">Parcourir les fichiers</button>
+                                <button type="button" class="btn-secondary" id="btn-load-demo" style="border-color:rgba(99,102,241,0.3);color:var(--primary-light);">🖼️ Charger la Démo (testimg.jpg)</button>
+                            </div>
+                        </div>
+
+                        <!-- Zoomable Viewport -->
+                        <div class="preview-viewport hidden" id="preview-viewport">
+                            <img id="main-preview-img" class="viewport-img" alt="Aperçu image">
+                        </div>
+
+                        <!-- Split Comparison Slider (Active after obfuscation) -->
+                        <div class="compare-container hidden" id="compare-slider-box">
+                            <canvas id="compare-canvas" class="compare-canvas"></canvas>
+                            <div class="compare-handle-line" id="compare-handle">
+                                <div class="compare-handle-circle">⟷</div>
+                            </div>
+                            <span class="compare-pill left">Original</span>
+                            <span class="compare-pill right">Obfusqué</span>
+                        </div>
+
+                        <!-- Floating Zoom Bar -->
+                        <div class="viewport-floating-bar hidden" id="viewport-toolbar">
+                            <button type="button" class="btn-mini-control" id="btn-zoom-in" title="Zoom +">+</button>
+                            <button type="button" class="btn-mini-control" id="btn-zoom-out" title="Zoom -">-</button>
+                            <button type="button" class="btn-mini-control" id="btn-zoom-reset" title="Réinitialiser (1:1)">1:1</button>
+                            <button type="button" class="btn-mini-control" id="btn-export-comparison-gif" title="Exporter en GIF animé">GIF</button>
+                        </div>
                     </div>
-                    <div id="share-recv-progress" class="hidden" style="margin-top:16px;">
-                        <div class="share-progress-bar"><div class="share-progress-fill" id="share-recv-progress-fill"></div></div>
-                        <p id="share-recv-progress-text" style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">En attente...</p>
+
+                    <!-- Batch Files Tray -->
+                    <div id="batch-tray" class="panel-card hidden" style="padding:14px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <span style="font-size:0.84rem;font-weight:700;">
+                                Mode Batch : <span id="batch-counter" class="text-primary-c">0</span> images
+                            </span>
+                            <button type="button" id="btn-clear-batch" class="btn-mini-control" style="width:auto;border-radius:6px;padding:2px 8px;font-size:0.75rem;">Vider</button>
+                        </div>
+                        <div id="batch-strip" class="batch-strip"></div>
                     </div>
                 </div>
-            </section>
-        </div>
-
-        <!-- ========== HISTORY VIEW ========== -->
-        <div class="view-content" id="history-view">
-            <div id="history-empty" class="panel" style="text-align:center;padding:40px;color:var(--text-muted);">
-                <p style="font-size:1.2rem;margin-bottom:8px;">📜</p>
-                <p>Aucun historique pour le moment.</p>
-                <p style="font-size:0.8rem;margin-top:6px;">Vos obfuscations apparaîtront ici automatiquement.</p>
             </div>
-            <div id="history-list" class="history-list"></div>
-            <button id="history-clear" class="btn btn-secondary w-full mt-4 hidden">Effacer l'historique</button>
-        </div>
+        </section>
 
-        <!-- Audio Modal -->
-        <div id="audio-modal" class="hidden overlay">
-            <div class="modal-content panel">
-                <button id="close-audio-btn" class="close-btn">&times;</button>
-                <h2 style="margin-bottom:12px;">Audio Receiver</h2>
-                <canvas id="audio-visualizer" width="400" height="120" style="width:100%;height:120px;background:#000;border-radius:10px;border:1px solid rgba(255,255,255,0.1);margin-bottom:12px;"></canvas>
-                <div id="stream-output" style="background:#0a0a0a;font-family:monospace;color:var(--primary);padding:10px;height:80px;overflow-y:auto;text-align:left;border-radius:10px;margin-bottom:12px;word-break:break-all;font-size:0.75rem;width:100%;"></div>
-                <div style="display:flex;gap:8px;"><button id="start-listen-btn" class="btn btn-primary" style="flex:1;">Écouter</button><button id="stop-listen-btn" class="btn btn-secondary hidden" style="flex:1;">Stop</button></div>
+        <!-- ===================================================================
+             TAB 2: REVERT & DECRYPT PANEL
+             =================================================================== -->
+        <section class="view-panel" id="revert-panel">
+            <div class="studio-grid">
+                <div class="controls-column">
+                    <div class="panel-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                                Paramètres de Restauration
+                            </span>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="revert-pwd">
+                                <span>Mot de passe de déchiffrement</span>
+                                <small style="color:var(--text-tertiary)">Optionnel si non protégé</small>
+                            </label>
+                            <div class="password-field">
+                                <input type="password" id="revert-pwd" class="form-input" placeholder="Saisir la clé secrète">
+                                <button type="button" id="toggle-rev-pwd-visibility" class="pwd-toggle-btn">👁️</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group mt-2">
+                            <label class="form-label" for="revert-algo-select">
+                                <span>Algorithme (Auto / Forcer)</span>
+                                <span id="revert-container-badge" class="brand-badge" style="font-size:0.68rem;background:rgba(16,185,129,0.15);color:var(--accent-emerald);border-color:rgba(16,185,129,0.3);">Détection Auto</span>
+                            </label>
+                            <select id="revert-algo-select" class="form-select">
+                                <option value="auto" selected>✨ Détection Automatique (Conteneur v4 / Analyse)</option>
+                                <optgroup label="🛡️ Résistants JPEG / WhatsApp (Recommandés si fichier converti)">
+                                    <option value="dfws">🛡️ DualsFWShield (DFWS Blocs Ancrés)</option>
+                                    <option value="block-shuffle-16">🛡️ Permutation Macroblocs 16×16 (WhatsApp & JPEG)</option>
+                                    <option value="robust-dct-scramble">🛡️ Scramble Fréquentiel DCT (Luminance & Blocs 16×16)</option>
+                                    <option value="block-shuffle-8">🛡️ Permutation Blocs 8×8 (Aligné JPEG)</option>
+                                </optgroup>
+                                <optgroup label="💎 Bijections Exactes (Formats Sans Perte PNG/TIFF)">
+                                    <option value="xor-shuffle">XOR Chaos & Permutation</option>
+                                    <option value="cat-map">Torsion Chat d'Arnold</option>
+                                    <option value="logistic-xor">Attracteur Logistique</option>
+                                    <option value="baker-map">Carte de Baker</option>
+                                    <option value="henon">Attracteur de Hénon</option>
+                                    <option value="chirikov">Carte Standard de Chirikov</option>
+                                    <option value="hilbert">Courbe de Hilbert</option>
+                                    <option value="rubik">Rubik's Cube</option>
+                                    <option value="spiral">Scan Spiral</option>
+                                    <option value="zigzag">Balayage Zigzag</option>
+                                    <option value="affine-map">Translation Affine Modulo</option>
+                                    <option value="wave-shift">Ondes Sinusoïdales</option>
+                                    <option value="prime-scatter">Dispersion Nombres Premiers</option>
+                                    <option value="rgb-shift">Décalage Chromatique</option>
+                                </optgroup>
+                                <optgroup label="🔒 Stéganographie Seule">
+                                    <option value="none">Aucun (Extraire uniquement le payload secret)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <button type="button" class="btn-primary mt-3" id="btn-run-revert">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                            <span>Déchiffrer & Restaurer</span>
+                        </button>
+
+                        <button type="button" class="btn-secondary w-full mt-2" id="btn-brute-force" style="border-color:rgba(139,92,246,0.3);color:var(--accent-violet);">
+                            <span>🚀 Scan Multi-Algorithmes (Brute Force)</span>
+                        </button>
+                    </div>
+
+                    <!-- Decoded Watermark / Signature Feedback -->
+                    <div id="revert-meta-card" class="panel-card hidden">
+                        <div class="card-header">
+                            <span class="card-title" style="color:var(--accent-emerald);">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                Résultats Détectés
+                            </span>
+                        </div>
+                        <div class="detection-info-list">
+                            <div class="detection-row">
+                                <span class="detection-label">Algorithme</span>
+                                <span class="detection-value badge-pill" id="detected-algo-info">—</span>
+                            </div>
+                            <div class="detection-row">
+                                <span class="detection-label">Filigrane</span>
+                                <span class="detection-value badge-pill" id="detected-wm-info">Aucun</span>
+                            </div>
+                            <div class="detection-row">
+                                <span class="detection-label">Conteneur</span>
+                                <span class="detection-value badge-pill" id="detected-sig-info">Intact</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="workspace-column">
+                    <div class="drop-zone" id="revert-dropzone">
+                        <input type="file" id="revert-file-input" accept="image/png,image/webp,image/jpeg,image/avif" hidden>
+                        <div class="drop-empty-prompt" id="revert-empty-ui">
+                            <div class="drop-icon-circle" style="background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.25);color:var(--accent-emerald);">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </div>
+                            <h3>Glissez l'image protégée à restaurer</h3>
+                            <p>Détection automatique instantanée du conteneur cryptographique et des payloads cachés.</p>
+                            <button type="button" class="btn-secondary" style="margin-top:8px;">Sélectionner l'image</button>
+                        </div>
+
+                        <div class="preview-viewport hidden" id="revert-viewport">
+                            <img id="revert-preview-img" class="viewport-img" alt="Image restaurée">
+                        </div>
+                    </div>
+
+                    <!-- Extracted Secret Payload Card -->
+                    <div id="extracted-payload-card" class="panel-card hidden extracted-vault-card">
+                        <div class="card-header">
+                            <span class="card-title" style="color:var(--primary-light);">
+                                🕵️ Fichier Secret Déchiffré & Extrait
+                            </span>
+                            <button type="button" class="btn-primary" id="btn-download-secret" style="padding:6px 16px;font-size:0.8rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                <span>Télécharger</span>
+                            </button>
+                        </div>
+                        <div class="extracted-payload-body">
+                            <div class="payload-preview-box">
+                                <img id="payload-thumb-preview" alt="Aperçu secret" class="payload-thumb">
+                                <span id="payload-type-badge" class="payload-badge">BIN</span>
+                            </div>
+                            <div class="payload-details">
+                                <h4 id="payload-filename-text">document_secret.bin</h4>
+                                <p id="payload-meta-text">0 KB · Déchiffré avec succès</p>
+                                <div class="payload-source-tag" id="payload-source-tag">
+                                    🛡️ Extrait des fréquences DCT (Survit au JPEG & Recompression)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Camo Layer -->
-        <div id="camouflage-layer" class="hidden">
-            <div class="spreadsheet-header"><div class="sheet-title">Q4 Financial Overview_2025.xlsx - Excel</div><div class="window-controls"><span>_</span><span>□</span><span class="close-x">×</span></div></div>
-            <div class="spreadsheet-toolbar"><span>File</span><span>Home</span><span>Insert</span><span>Page Layout</span><span>Formulas</span><span>Data</span><span>Review</span><span>View</span></div>
-            <div class="spreadsheet-formula-bar"><span class="fx">fx</span><input type="text" value="=SUM(D2:D14)" readonly></div>
-            <div class="spreadsheet-content"><table><thead><tr><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr></thead><tbody>
-                <tr><th>1</th><td>Category</td><td>Item</td><td>Unit Cost</td><td>Total</td><td>Notes</td></tr>
-                <tr><th>2</th><td>Operating</td><td>Server Maint.</td><td>450.00</td><td>450.00</td><td>Monthly</td></tr>
-                <tr><th>3</th><td>Marketing</td><td>Q3 Campaign</td><td>1200.00</td><td>1200.00</td><td>Completed</td></tr>
-                <tr><th>4</th><td>Personnel</td><td>Consulting</td><td>800.00</td><td>1600.00</td><td>Contract</td></tr>
-                <tr><th>5</th><td>Software</td><td>Licenses</td><td>299.00</td><td>299.00</td><td>Annual</td></tr>
-                <tr><th>6</th><td>Logistics</td><td>Shipping</td><td>150.00</td><td>450.00</td><td>Domestic</td></tr>
-                <tr><th>7</th><td></td><td></td><td></td><td></td><td></td></tr>
-                <tr><th>8</th><td><b>Total</b></td><td></td><td></td><td id="camo-exit-trigger" title="Double Click"><b>4119.00</b></td><td></td></tr>
-            </tbody></table></div>
-            <div class="spreadsheet-footer"><span class="tab active">Sheet1</span><span class="tab">Sheet2</span><span class="tab">Sheet3</span></div>
-        </div>
+        <!-- ===================================================================
+             TAB 3: FORENSIC LAB & INSPECTOR PANEL
+             =================================================================== -->
+        <section class="view-panel" id="forensic-panel">
+            <div class="forensic-grid">
+                <!-- Bit-Plane Visualizer -->
+                <div class="panel-card">
+                    <div class="card-header">
+                        <span class="card-title">
+                            🔬 Visualiseur de Bit-Planes Forensique
+                        </span>
+                    </div>
+                    <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:14px;">
+                        Isolez chaque couche binaire (du LSB Bit 0 au MSB Bit 7) pour inspecter visuellement les données stéganographiques cachées ou le bruit d'artefact.
+                    </p>
+
+                    <div class="form-group">
+                        <label class="form-label">Canal Chromatique</label>
+                        <div class="bit-plane-selector">
+                            <button class="bit-chip active" data-channel="gray">Luminance (Gris)</button>
+                            <button class="bit-chip" data-channel="r">Rouge</button>
+                            <button class="bit-chip" data-channel="g">Vert</button>
+                            <button class="bit-chip" data-channel="b">Bleu</button>
+                            <button class="bit-chip" data-channel="all">Composite</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Profondeur Binaire (Bit-Plane)</label>
+                        <div class="bit-plane-selector">
+                            <button class="bit-chip active" data-bit="0">Bit 0 (LSB Secret)</button>
+                            <button class="bit-chip" data-bit="1">Bit 1</button>
+                            <button class="bit-chip" data-bit="2">Bit 2</button>
+                            <button class="bit-chip" data-bit="3">Bit 3</button>
+                            <button class="bit-chip" data-bit="4">Bit 4</button>
+                            <button class="bit-chip" data-bit="5">Bit 5</button>
+                            <button class="bit-chip" data-bit="6">Bit 6</button>
+                            <button class="bit-chip" data-bit="7">Bit 7 (MSB)</button>
+                        </div>
+                    </div>
+
+                    <div class="forensic-viewport mt-2">
+                        <canvas id="bit-plane-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- EXIF Inspector & Multi-Hash Calculator -->
+                <div class="controls-column">
+                    <div class="panel-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                🏷️ Métadonnées & Télémétrie EXIF
+                            </span>
+                            <button type="button" class="btn-secondary" id="btn-strip-and-save" style="padding:6px 12px;font-size:0.75rem;">
+                                Nettoyer & Sauvegarder
+                            </button>
+                        </div>
+                        <div class="metadata-table-wrapper">
+                            <table class="metadata-table">
+                                <thead>
+                                    <tr><th>Propriété</th><th>Valeur Extraite</th></tr>
+                                </thead>
+                                <tbody id="exif-table-body">
+                                    <tr><td colspan="2" style="text-align:center;color:var(--text-tertiary);">Chargez une image pour inspecter ses métadonnées.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="panel-card">
+                        <div class="card-header">
+                            <span class="card-title">
+                                🔒 Empreintes Cryptographiques d'Intégrité
+                            </span>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:8px;">
+                            <div class="hash-card">
+                                <div class="hash-label-group">
+                                    <div class="hash-type">SHA-256</div>
+                                    <code class="hash-string" id="forensic-sha256">—</code>
+                                </div>
+                                <button type="button" class="btn-icon" data-copy="forensic-sha256">📋</button>
+                            </div>
+                            <div class="hash-card">
+                                <div class="hash-label-group">
+                                    <div class="hash-type">SHA-512</div>
+                                    <code class="hash-string" id="forensic-sha512">—</code>
+                                </div>
+                                <button type="button" class="btn-icon" data-copy="forensic-sha512">📋</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================================================================
+             TAB 4: HISTORY & AUDIT LOG PANEL
+             =================================================================== -->
+        <section class="view-panel" id="history-panel">
+            <div class="history-toolbar">
+                <div>
+                    <h3 style="font-size:1.15rem;">Coffre Local & Historique d'Audit</h3>
+                    <p style="font-size:0.8rem;color:var(--text-secondary);">Enregistré uniquement dans la mémoire privée de votre navigateur.</p>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button type="button" class="btn-secondary" id="btn-export-history">Exporter le Journal (JSON)</button>
+                    <button type="button" class="btn-secondary" id="btn-clear-history" style="color:var(--accent-rose);">Purger l'Historique</button>
+                </div>
+            </div>
+
+            <div id="history-empty-state" class="panel-card" style="text-align:center;padding:48px 20px;">
+                <p style="font-size:1.6rem;margin-bottom:8px;">📜</p>
+                <h4>Aucune opération pour le moment</h4>
+                <p style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;">Les images traitées apparaîtront ici avec leurs empreintes cryptographiques.</p>
+            </div>
+
+            <div id="history-container" class="history-list">
+                <!-- Dynamic cards populated by JS -->
+            </div>
+        </section>
     </main>
 
-    <div id="toast-container"></div>
+    <!-- Help & Keyboard Shortcuts Modal -->
+    <div class="modal-overlay" id="help-modal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Raccourcis Clavier & Guide</h3>
+                <button type="button" class="btn-icon" id="btn-close-help">✕</button>
+            </div>
+            <div class="shortcut-row">
+                <span>Ouvrir une image</span>
+                <span class="kbd-badge">Ctrl + O</span>
+            </div>
+            <div class="shortcut-row">
+                <span>Lancer l'offuscation</span>
+                <span class="kbd-badge">Ctrl + Entrée</span>
+            </div>
+            <div class="shortcut-row">
+                <span>Basculer le curseur de comparaison</span>
+                <span class="kbd-badge">Espace</span>
+            </div>
+            <div class="shortcut-row">
+                <span>Réinitialiser le zoom</span>
+                <span class="kbd-badge">Double-clic</span>
+            </div>
+            <div class="shortcut-row">
+                <span>Fermer les modales</span>
+                <span class="kbd-badge">Échap</span>
+            </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <!-- <script src="share/p2p.js"></script> -->
-    <!-- <script src="share/audio.js"></script> -->
-    <!-- <script src="share/features.js"></script> -->
+            <h4 style="margin-top:20px;margin-bottom:8px;font-size:0.92rem;">Garantie de Sécurité</h4>
+            <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.45;">
+                Obscurify Pro s'exécute entièrement dans le bac à sable de votre navigateur (Web Workers & Web Crypto API).
+                Aucun pixel, aucune clé et aucune métadonnée ne transitent par un réseau externe.
+            </p>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" aria-live="polite"></div>
+
+    <!-- Application Script -->
     <script src="app.js"></script>
-    <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+    </script>
 </body>
 </html>
